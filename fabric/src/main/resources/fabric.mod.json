@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "eunomia",
+  "version": "${version}",
+  "name": "eunomia",
+  "description": "Lib for common stuff (//TODO adjust this)",
+  "authors": [
+    {
+      "name": "zannagh",
+      "contact": {
+        "email": "mail@zannagh.me"
+      }
+    }
+  ],
+  "contact": {
+    "email": "mail@zannagh.me",
+    "homepage": "https://github.com/zannagh",
+    "sources": "https://github.com/zannagh/eunomia",
+    "issues": "https://github.com/zannagh/eunomia/issues"
+  },
+  "license": "MIT",
+  "icon": "assets/eunomia/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "de.zannagh.eunomia.EunomiaFabric"
+    ],
+    "client": [
+      "de.zannagh.eunomia.client.EunomiaFabricClient"
+    ]
+  },
+  "mixins": [
+    "eunomia.mixins.json",
+    {
+      "config": "eunomia.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "${fabric_minecraft_version}",
+    "java": ">=${java_version}"
+  }
+}

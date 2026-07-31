@@ -23,7 +23,7 @@ All versions are built from the `main` branch - there are no separate version br
 
 ## Versioning
 
-[GitVersion](https://gitversion.net/) handles semantic versioning automatically (see `GitVersion.yml`).
+[GitVersion](https://gitversion.net/) handles semantic versioning automatically (see `../buildSrc/GitVersion.yml`).
 
 - Prereleases use the format `x.x.x-pre.N`
 - Version bumps are controlled via commit messages: `+semver: major`, `+semver: minor`, `+semver: patch`

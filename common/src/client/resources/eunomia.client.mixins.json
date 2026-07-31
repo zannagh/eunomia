@@ -1,0 +1,6 @@
+{
+  "required": true,
+  "package": "de.zannagh.eunomia.client.mixins",
+  "plugin": "de.zannagh.eunomia.client.EunomiaClientMixinPlugin",
+  "compatibilityLevel": "JAVA_${java_version}"
+}
