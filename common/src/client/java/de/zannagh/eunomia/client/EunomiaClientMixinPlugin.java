@@ -30,7 +30,9 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public List<String> getMixins() {
-        return List.of();
+        return List.of(
+                "de.zannagh.eunomia.client.mixins.DevSkinMixin"
+        );
     }
 
     @Override
