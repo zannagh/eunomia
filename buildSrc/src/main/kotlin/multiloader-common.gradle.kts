@@ -9,6 +9,14 @@ repositories {
     }
 }
 
+dependencies {
+    // The MC-free networking core. A plain-Java library (not a mod / not remapped), shared with
+    // :paper. Applied here in multiloader-common so it lands on the compile + dev-runtime classpath
+    // of common and BOTH loader flavours (loom-based fabric and moddev-based neoforge both apply
+    // this plugin), which srcDir common's sources and compile against it directly.
+    "implementation"(project(":core"))
+}
+
 val sc = project.stonecutterBuild
 val loader = sc.branch.id
 sc.constants["fabric"] = sc.current.project.contains("fabric")

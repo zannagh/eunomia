@@ -2,7 +2,11 @@ package de.zannagh.eunomia;
 
 import com.google.gson.Gson;
 import de.zannagh.eunomia.common.PackRepositoryProvider;
-import de.zannagh.eunomia.networking.EunomiaServer;import de.zannagh.eunomia.serialization.JsonSerializer;
+import de.zannagh.eunomia.examples.ExampleServerHandlers;
+import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.loader.LoaderNetwork;
+import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
+import de.zannagh.eunomia.serialization.JsonSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,14 +23,20 @@ public final class Eunomia {
     public static final String MOD_ID = "eunomia";
     public static final Logger LOGGER = LoggerFactory.getLogger("Eunomia");
     public static Gson SERIALIZER;
-    public static EunomiaServer SERVER;
 
     private Eunomia() {
     }
 
     public static void init() {
         SERIALIZER = new JsonSerializer().GSON;
-        SERVER = new EunomiaServer();
+        // The networking core resolves payloads with this Gson (config type adapters included).
+        NetworkSerializer.setGson(SERIALIZER);
+        // Install the loader networking adapter (registration listener + server transport), then the
+        // example server handlers so a fresh install already answers the eunomia:* example packets.
+        LoaderNetwork.init();
+        ExampleServerHandlers.register();
+        // Answer client capability probes so clients can detect this server runs Eunomia.
+        CommunicationManager.enableServerHandshake();
         LOGGER.info("Eunomia shared library loaded");
     }
 

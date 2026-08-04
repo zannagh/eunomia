@@ -2,8 +2,8 @@
 package de.zannagh.eunomia.mixins.networking;
 
 import de.zannagh.eunomia.Eunomia;
+import de.zannagh.eunomia.networking.loader.LoaderNetwork;
 import de.zannagh.eunomia.networking.payloads.EunomiaPayloadList;
-import de.zannagh.eunomia.networking.payloads.PayloadRegistry;
 import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,12 +13,12 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 import java.util.List;
 
 /**
- * Injects C2S (client-to-server) payload types into the codec created in
+ * Injects the serverbound (C2S) payload types into the codec created in
  * {@link ServerboundCustomPayloadPacket}'s static initializer.
  * <p>
- * Targets the <em>caller</em> of {@code CustomPacketPayload.codec()} rather than
- * the method itself, avoiding the "target loaded too early" crash that occurs when
- * another mod (e.g. Vivecraft) classloads {@code CustomPacketPayload} during boot.
+ * Targets the <em>caller</em> of {@code CustomPacketPayload.codec()} rather than the method itself,
+ * avoiding the "target loaded too early" crash that occurs when another mod (e.g. Vivecraft)
+ * classloads {@code CustomPacketPayload} during boot.
  */
 @Mixin(ServerboundCustomPayloadPacket.class)
 public class ServerboundCustomPayloadPacketMixin {
@@ -32,21 +32,17 @@ public class ServerboundCustomPayloadPacketMixin {
     )
     private static List<CustomPacketPayload.TypeAndCodec<?, ?>> injectC2SPayloads(
             List<CustomPacketPayload.TypeAndCodec<?, ?>> types) {
-        if (types instanceof EunomiaPayloadList<CustomPacketPayload.TypeAndCodec<?,?>>) {
+        if (types instanceof EunomiaPayloadList<CustomPacketPayload.TypeAndCodec<?, ?>>) {
             return types;
         }
-
-        var c2sPackets = PayloadRegistry.getAllC2S();
-        if (types.stream().anyMatch(tac -> c2sPackets.containsKey(tac.type().id()))) {
+        if (types.stream().anyMatch(tac -> LoaderNetwork.isServerboundId(tac.type().id()))) {
             return types;
         }
 
         EunomiaPayloadList<CustomPacketPayload.TypeAndCodec<?, ?>> modifiedTypes = new EunomiaPayloadList<>(types);
-        Eunomia.LOGGER.info("Injecting C2S payloads into ServerboundCustomPayloadPacket codec. Current types: {}, adding: {}",
-                types.size(), c2sPackets.size());
-        c2sPackets.forEach((id, entry) -> {
+        LoaderNetwork.serverboundEntries().forEach(entry -> {
             modifiedTypes.add(new CustomPacketPayload.TypeAndCodec(entry.type(), entry.codec()));
-            Eunomia.LOGGER.info("Injected C2S payload: {}", id);
+            Eunomia.LOGGER.info("Injected C2S payload: {}", entry.type().id());
         });
         return modifiedTypes;
     }

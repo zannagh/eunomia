@@ -1,7 +1,8 @@
 package de.zannagh.eunomia.configuration;
 
-//? if >= 1.20.5 {
 import de.zannagh.eunomia.common.SemanticVersion;
+
+//? if >= 1.20.5 {
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;

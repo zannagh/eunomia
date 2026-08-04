@@ -1,0 +1,8 @@
+name: Eunomia
+version: 0.0.1-preview.0
+main: de.zannagh.eunomia.paper.EunomiaPaperPlugin
+description: Eunomia server-side networking - the mod's server half for servers running Bukkit/Spigot/Paper/Purpur.
+authors:
+  - zannagh
+# Compiled against the 1.20 API and touching no NMS, so the single jar loads on 1.20.1 through 26.x.
+api-version: "1.20"

@@ -27,7 +27,8 @@
     ],
     "client": [
       "de.zannagh.eunomia.client.EunomiaFabricClient"
-    ]
+    ],
+    "fabric-client-gametest": ${fcgt_entries}
   },
   "mixins": [
     "eunomia.mixins.json",

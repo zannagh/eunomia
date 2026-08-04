@@ -1,0 +1,60 @@
+package de.zannagh.eunomia.client.networking;
+
+import de.zannagh.eunomia.Eunomia;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Client-side connection events, replacing Fabric API's {@code ClientPlayConnectionEvents} so the
+ * library stays API-free. Join is fired from the client packet-listener mixin once login finishes;
+ * disconnect is fired when the play connection is torn down.
+ */
+public final class ClientConnectionEvents {
+
+    private static final List<JoinHandler> JOIN_HANDLERS = new ArrayList<>();
+    private static final List<DisconnectHandler> DISCONNECT_HANDLERS = new ArrayList<>();
+
+    private ClientConnectionEvents() {
+    }
+
+    public static void registerJoin(JoinHandler handler) {
+        JOIN_HANDLERS.add(handler);
+    }
+
+    public static void registerDisconnect(DisconnectHandler handler) {
+        DISCONNECT_HANDLERS.add(handler);
+    }
+
+    public static void onClientJoin(ClientPacketListener handler, Minecraft client) {
+        for (JoinHandler h : JOIN_HANDLERS) {
+            try {
+                h.onJoin(handler, client);
+            } catch (Exception e) {
+                Eunomia.LOGGER.error("Error in client join handler", e);
+            }
+        }
+    }
+
+    public static void onClientDisconnect(Minecraft client) {
+        for (DisconnectHandler h : DISCONNECT_HANDLERS) {
+            try {
+                h.onDisconnect(client);
+            } catch (Exception e) {
+                Eunomia.LOGGER.error("Error in client disconnect handler", e);
+            }
+        }
+    }
+
+    @FunctionalInterface
+    public interface JoinHandler {
+        void onJoin(ClientPacketListener handler, Minecraft client);
+    }
+
+    @FunctionalInterface
+    public interface DisconnectHandler {
+        void onDisconnect(Minecraft client);
+    }
+}

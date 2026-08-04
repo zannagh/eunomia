@@ -39,6 +39,10 @@ repositories {
 with(sc) {
     constants["fabric"] = current.project.contains("fabric")
     constants["neoforge"] = current.project.contains("neoforge")
+    // `fcgt` gates the FCGT (fabric-client-gametest-api-v1) networking smoke: on for Fabric variants
+    // that pin `fabricapi.semver` (currently fabric-26.2), off everywhere else so the test class and
+    // its entrypoint stay commented out where the module is not available.
+    constants["fcgt"] = hasProperty("fabricapi.semver") && current.project.contains("fabric")
 }
 
 // ── Common branch ──
@@ -57,6 +61,15 @@ if (branch == "common") {
         add("testImplementation", platform("org.junit:junit-bom:6.0.1"))
         add("testImplementation", "org.junit.jupiter:junit-jupiter")
         add("testRuntimeOnly", "org.junit.platform:junit-platform-launcher")
+        // FCGT: the individual fabric-client-gametest-api-v1 module on the client compile classpath so
+        // the stonecutter-gated NetworkingSmokeTest in common/src/client compiles on variants that pin
+        // fabricapi.semver. Uses the flat module jar (works with plain configs in the deobf variants).
+        if (hasProperty("fabricapi.semver")) {
+            val fabricApiExt = extensions.getByType(net.fabricmc.loom.api.fabricapi.FabricApiExtension::class.java)
+            val semver = findProperty("fabricapi.semver")!!.toString()
+            add(if (isDeobf) "clientCompileOnly" else "modClientCompileOnly",
+                fabricApiExt.module("fabric-client-gametest-api-v1", semver))
+        }
     }
 
     val javaVersionStr = findProperty("java.version")?.toString() ?: error("No Java version specified")
@@ -117,12 +130,48 @@ if (branch == "fabric") {
         if (!isDeobf) {
             add("modImplementation", "net.fabricmc:fabric-loader:${property("loader_version")}")
         }
+        // FCGT networking smoke: fabric-api plus the individual FCGT module on the client
+        // compile+runtime classpath so the gametest runner's mixin plugin loads and NetworkingSmokeTest
+        // can drive a real client. The umbrella from fabric maven carries the FCGT module (the
+        // Modrinth-distributed one strips it), and the flat module jar covers the deobf variants.
+        if (hasProperty("fabricapi.semver")) {
+            val fabricApiExt = extensions.getByType(net.fabricmc.loom.api.fabricapi.FabricApiExtension::class.java)
+            val semver = findProperty("fabricapi.semver")!!.toString()
+            add(if (isDeobf) "clientCompileOnly" else "modClientCompileOnly",
+                fabricApiExt.module("fabric-client-gametest-api-v1", semver))
+            add("modClientRuntimeOnly", "net.fabricmc.fabric-api:fabric-api:$semver")
+            add("modClientRuntimeOnly", fabricApiExt.module("fabric-client-gametest-api-v1", semver))
+        }
+    }
+
+    // Registered FCGT entrypoints for this variant: the networking smoke where the module is available,
+    // an empty (but valid JSON) array everywhere else so fabric-loader simply ignores the entrypoint.
+    val fcgtEntries = if (hasProperty("fabricapi.semver"))
+        "[\"de.zannagh.eunomia.smoke.NetworkingSmokeTest\"]"
+    else
+        "[]"
+
+    // The `runClientGametest` run config on variants that pin fabricapi.semver. FCGT swaps the main
+    // loop for the test driver via these properties; disableNetworkSynchronizer is required because our
+    // codec-injection mixin interfaces with packets at a low level, which FCGT otherwise hard-asserts on.
+    if (hasProperty("fabricapi.semver")) {
+        loom.apply {
+            runConfigs.create("clientGametest") {
+                client()
+                ideConfigGenerated(true)
+                runDirectory.dir("run")
+                jvmArguments.add("-Dfabric.client.gametest=true")
+                jvmArguments.add("-Dfabric.client.gametest.modid=eunomia")
+                jvmArguments.add("-Dfabric.client.gametest.disableNetworkSynchronizer=true")
+            }
+        }
     }
 
     val expandProps = mapOf(
         "version" to project.version,
         "java_version" to (findProperty("java.version")?.toString() ?: error("No Java version")),
-        "fabric_minecraft_version" to (findProperty("fabric.minecraft_version_range")?.toString() ?: error("No Fabric version range"))
+        "fabric_minecraft_version" to (findProperty("fabric.minecraft_version_range")?.toString() ?: error("No Fabric version range")),
+        "fcgt_entries" to fcgtEntries
     )
 
     tasks.named<ProcessResources>("processResources") {

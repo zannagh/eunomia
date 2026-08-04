@@ -4,6 +4,7 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "networking.ClientboundCustomPayloadPacketMixin",
+    "networking.ServerboundCustomPayloadPacketMixin",
     "networking.ServerGamePacketListenerMixin",
     "networking.ServerLoginMixin",
     "networking.ServerPlayNetworkHandlerMixin",

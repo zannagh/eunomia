@@ -10,13 +10,19 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 //? if < 1.20.5 {
+/*import de.zannagh.eunomia.networking.loader.LoaderNetwork;
+import de.zannagh.eunomia.networking.loader.McServerContext;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.spongepowered.asm.mixin.Final;
-//? }
+*///? }
 
+/**
+ * Serverbound dispatch on 1.20.x (pre-{@code CustomPacketPayload}): decodes the raw
+ * {@code FriendlyByteBuf} for the channel through the loader network and routes it. On 1.20.5+ the
+ * modern {@link ServerGamePacketListenerMixin} does the work and this injection is inert.
+ */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerPlayNetworkHandlerMixin {
 
@@ -24,21 +30,17 @@ public abstract class ServerPlayNetworkHandlerMixin {
     public ServerPlayer player;
 
     //? if < 1.20.5 {
-    /*
-    @Final
+    /*@Final
     @Shadow
     private MinecraftServer server;
     *///? }
 
     @Inject(method = "handleCustomPayload", at = @At("HEAD"), cancellable = true)
-    private void handleCustomPayloadReceivedAsync(ServerboundCustomPayloadPacket packet, CallbackInfo callbackInfo) {
+    private void eunomia$handleLegacyCustomPayload(ServerboundCustomPayloadPacket packet, CallbackInfo callbackInfo) {
         //? if < 1.20.5 {
         /*Identifier channel = packet.getIdentifier();
         FriendlyByteBuf data = packet.getData();
-
-        var context = new ServerPayloadContext(player, server);
-
-        if (Eunomia.SERVER.handleC2SPacket(channel, data, context)) {
+        if (LoaderNetwork.dispatchLegacyServerbound(channel, data, new McServerContext(player, server))) {
             callbackInfo.cancel();
         }
         *///? }

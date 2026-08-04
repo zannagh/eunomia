@@ -1,9 +1,9 @@
 //? if >= 1.20.5 {
 package de.zannagh.eunomia.mixins.networking;
 
-import de.zannagh.eunomia.Eunomia;
-import de.zannagh.eunomia.networking.payloads.PayloadRegistry;
-import de.zannagh.eunomia.server.ServerPayloadContext;
+import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.loader.McServerContext;
+import de.zannagh.eunomia.networking.payloads.EunomiaPayload;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -14,49 +14,39 @@ import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// Mixin to handle custom payloads on the server side and player join events.
+/**
+ * Routes inbound Eunomia custom payloads to the {@link CommunicationManager} on the server. The
+ * payload has already been decoded into an {@link EunomiaPayload} by the injected StreamCodec, so
+ * this only unwraps it and hands the POJO to the handler - on the server thread, and only after
+ * cancelling vanilla's own (unknown-payload) handling.
+ */
 @Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerGamePacketListenerMixin extends ServerCommonPacketListenerImpl {
 
-    @Unique
-    final MinecraftServer minecraftServer;
-    @Shadow
-    public ServerPlayer player;
-
     public ServerGamePacketListenerMixin(MinecraftServer minecraftServer, Connection connection, CommonListenerCookie commonListenerCookie) {
         super(minecraftServer, connection, commonListenerCookie);
-        this.minecraftServer = minecraftServer;
     }
 
     @Shadow
     public abstract ServerPlayer getPlayer();
 
     @Inject(method = "handleCustomPayload", at = @At("HEAD"), cancellable = true)
-    private void handleCustomPayloadReceivedAsync(ServerboundCustomPayloadPacket packet, CallbackInfo callbackInfo) {
+    private void eunomia$handleCustomPayload(ServerboundCustomPayloadPacket packet, CallbackInfo callbackInfo) {
         CustomPacketPayload payload = packet.payload();
-        var payloadId = payload.type().id();
-
-        var handler = PayloadRegistry.getC2SHandler(payloadId);
-        if (handler == null) {
+        if (!(payload instanceof EunomiaPayload eunomiaPayload)) {
             return;
         }
-
-        Eunomia.LOGGER.debug("Handling C2S payload: {}", payloadId);
-
-        var context = new ServerPayloadContext(getPlayer(), server);
-        var handlerContext = new PayloadRegistry.PayloadHandlerContext<>(payload, context);
-
-        try {
-            handler.accept(handlerContext);
-        } catch (Exception e) {
-            Eunomia.LOGGER.error("Error handling C2S payload: {}", payloadId, e);
-        }
+        // It is ours: stop vanilla from treating it as an unknown payload, then run the handler on
+        // the server thread so it can safely touch world/server state.
         callbackInfo.cancel();
+        String channelKey = eunomiaPayload.type().id().toString();
+        ServerPlayer sender = getPlayer();
+        server.execute(() -> CommunicationManager.dispatchServerbound(
+                channelKey, eunomiaPayload.data(), new McServerContext(sender, server)));
     }
 }
 //?}

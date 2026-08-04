@@ -87,6 +87,10 @@ game_versions = "26.2-pre-1"
 java.version = "25"
 display_version = "26.2"
 game_versions = "26.2"
+# To enable the FCGT (fabric-client-gametest-api-v1) networking smoke on a variant, set
+# `fabricapi.semver` here (the fabric-api version for that MC, e.g. "0.153.0+26.2"). Presence of the
+# property flips the `fcgt` stonecutter constant, the FCGT deps, the gametest entrypoint and the
+# `runClientGametest` task on. Left off on this deobf variant - see the smoke README for the caveat.
 
 ["26.3-snapshot-5"]
 java.version = "25"
