@@ -97,4 +97,8 @@ wire is byte-for-byte what the Paper plugin decodes.
 - `:core` — `PayloadCodecTest`, `CommunicationManagerTest`, `LoopbackHandshakeTest`,
   `ServerHandshakeTest`: the full routing/codec/handler/handshake logic through real wire bytes.
 - `:paper` — `PaperWireContractTest`: the plugin speaks the same channels and format as the loaders.
-- `:smoke` — the FCGT client gametest for live end-to-end validation (see `smoke/README.md`).
+- `:smoke` — the FCGT client gametest for live end-to-end validation (see `java/smoke/README.md`).
+
+> The Gradle build lives under `java/` (all subprojects, the wrapper and the build config). Run it from
+> there: `cd java && ./gradlew :core:test`. Gradle module paths (`:core`, `:paper`, …) are unaffected by
+> the folder; only filesystem paths gain the `java/` prefix.
