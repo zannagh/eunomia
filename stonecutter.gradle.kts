@@ -11,6 +11,7 @@ stonecutter parameters {
     // rules its own source needs, e.g.:
     //   replacements.string(current.parsed >= "1.21.11") { replace("ResourceLocation", "Identifier") }
 
+    replacements.string(current.parsed < "1.20.5") { replace("net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket", "net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket")}
     replacements.string(current.parsed >= "1.21.11") { replace("ResourceLocation", "Identifier") }
     replacements.string(false) { replace("packet.getIdentifier()", "packet.getResourceLocation()") }
     replacements.string(current.parsed <= "1.21.8") { replace("AvatarRenderState", "PlayerRenderState") }
