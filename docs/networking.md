@@ -70,6 +70,35 @@ CommunicationManager.serverCapabilities().onResolved(caps -> {
 The handshake runs automatically on join (a `eunomia:hello` probe answered by `eunomia:hello_ack`
 carrying the server's receiver channels); "resolved" means an ACK arrived or the probe timed out.
 
+## Store a per-player config server-side
+
+A mod's per-player settings object (Armor Hider's `PlayerConfig`) is just a `ConfigurationItem` that also
+carries the owning player's UUID — a `PlayerLinkedConfigurationItem`. Extend `PlayerLinkedConfigurationItemBase`
+to get the id + change-flag plumbing for free, then let Eunomia keep the server-side map for you:
+
+```java
+public final class MyConfig extends PlayerLinkedConfigurationItemBase<MyConfig> {
+    public int level;
+    public MyConfig() {}
+    public MyConfig(UUID id, int level) { super(id); this.level = level; }
+    // ... the remaining ConfigurationItem methods (value/default, schema, migrate, codec) ...
+}
+
+public static final PacketType<MyConfig> SYNC =
+        PacketType.serverbound("mymod", "config", MyConfig.class);
+
+// One store, one wiring call: every SYNC a client sends is stored under its authenticated UUID.
+var store = new ServerSidePlayerConfigStorage<>(MyConfig.class, id -> new MyConfig(id, 0))
+        .handleOn(SYNC);
+store.loadFrom(Path.of("config", "mymod-players.json"));   // survives restarts; empty if absent
+```
+
+Lookups are UUID-only — there is no name index. The store never returns `null` for a good query
+(`getOrCreate` / `getOrDefault` fall back through the factory), and both `put` and load-time healing re-stamp
+each config's own id to match the map key it lives under, so a client cannot store settings under someone
+else's id. `toJson` / `applyJson` / `saveTo` / `loadFrom` round-trip through the same Eunomia `Gson` (and the
+same config type adapters) that serialize the payload on the wire.
+
 ## Architecture
 
 ```

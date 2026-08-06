@@ -7,7 +7,6 @@ import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 import de.zannagh.eunomia.Eunomia;
-import org.apache.logging.log4j.core.config.ConfigurationSource;
 import org.jspecify.annotations.NonNull;
 
 import java.io.IOException;
@@ -33,7 +32,7 @@ public class ConfigurationSourceSerializer implements TypeAdapterFactory {
     public <T> TypeAdapter<T> create(Gson gson, TypeToken<T> typeToken) {
         Class<?> rawType = typeToken.getRawType();
 
-        if (!ConfigurationSource.class.isAssignableFrom(rawType)) {
+        if (!ConfigurationItem.class.isAssignableFrom(rawType)) {
             return null;
         }
 
