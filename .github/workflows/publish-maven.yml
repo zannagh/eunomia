@@ -1,0 +1,60 @@
+# Publishes eunomia's maven artifacts to GitHub Packages so a sibling mod can consume them:
+#   - de.zannagh.eunomia:eunomia-core   (the MC-free networking/framework library)
+#   - de.zannagh.eunomia:eunomia-paper  (the shaded Paper plugin)
+#   - de.zannagh.eunomia:eunomia-common (the active stonecutter variant's common jar)
+#
+# This is the ONLY publish workflow - there are deliberately NO uploads to Modrinth/CurseForge/Hangar
+# (eunomia is not released as a consumer-facing mod yet).
+#
+# NOTE: `publish` covers the active common variant only. To publish the full per-game-version common
+# matrix, switch the active variant (`./gradlew "Set active project to <variant>"`) and re-run, or add
+# a matrix over the stonecutter variants here later.
+
+name: Publish (Maven)
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+env:
+  EUNOMIA_BUILD_SCAN_PUBLISH: "true"
+
+jobs:
+  publish:
+    name: Publish to GitHub Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    defaults:
+      run:
+        shell: bash
+        working-directory: java
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version
+        id: version
+        uses: zannagh/versionizer/calculate-version@v1
+
+      - name: Setup Gradle Environment
+        uses: zannagh/versionizer/setup-gradle-env@v1
+
+      # The eunomia-publish convention reads GITHUB_ACTOR/GITHUB_TOKEN for the GitHub Packages repo.
+      - name: Publish libraries
+        run: ./gradlew publish -PsemVer="${{ steps.version.outputs.fullSemVer }}"
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Also publish the shared multiloader/stonecutter convention plugins (standalone build) so a
+      # consumer can apply the same setup as a resolved plugin instead of copying buildSrc.
+      - name: Publish convention plugins
+        run: ./gradlew -p gradle-conventions publish -PsemVer="${{ steps.version.outputs.fullSemVer }}"
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

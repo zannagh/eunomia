@@ -1,6 +1,8 @@
 plugins {
     java
     `java-library`
+    jacoco
+    id("eunomia-publish")
 }
 
 // The networking core is deliberately Minecraft-free: plain Java + Gson only. That is what lets
@@ -47,5 +49,26 @@ tasks.test {
     testLogging {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+// The MC-free networking core is the primary maven artifact a consuming mod (armor-hider) pulls in
+// - either on its build classpath or jar-in-jar'd. Publishes the library jar + sources under
+// `de.zannagh.eunomia:eunomia-core`.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "eunomia-core"
+            from(components["java"])
+        }
     }
 }

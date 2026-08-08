@@ -1,6 +1,8 @@
 plugins {
     java
+    jacoco
     id("com.gradleup.shadow") version "9.2.2"
+    id("eunomia-publish")
 }
 
 // The Paper plugin talks nothing but the wire protocol, so a single jar covers every supported game
@@ -8,11 +10,32 @@ plugins {
 // relay and hand-writes no schema: the same PacketType/PayloadCodec the loaders use resolve payloads
 // here too. paperweight-userdev is deliberately not used; nothing touches NMS.
 group = "de.zannagh.eunomia"
-version = findProperty("semVer")?.toString()?.takeIf { it.isNotEmpty() } ?: "0.0.1-preview.0"
+
+val semVer = findProperty("semVer")?.toString()?.takeIf { it.isNotEmpty() } ?: "0.0.1-preview.0"
+val displayVersion = "paper"
+version = "$semVer+$displayVersion"
 
 base {
     archivesName.set("eunomia-paper")
 }
+
+// Derived from stonecutter.properties.toml so the published game-version list can't drift from what
+// the loaders ship. Snapshots/pre/rc are dropped (PaperMC only ships stable releases), as are the MC
+// versions Paper never released at all. Read back by the root `stageArtifacts` task.
+val unstableVersionMarkers = listOf("-snapshot-", "-pre-", "-rc-")
+val versionsWithoutPaperBuilds = setOf("1.21.2", "26.1")
+val supportedGameVersions: String = rootProject.file("stonecutter.properties.toml").readLines()
+    .filter { it.trimStart().startsWith("game_versions") }
+    .flatMap { it.substringAfter('=').trim().trim('"').split(",") }
+    .map { it.trim() }
+    .filter { it.isNotEmpty() }
+    .filter { version -> unstableVersionMarkers.none { version.contains(it) } }
+    .filterNot { it in versionsWithoutPaperBuilds }
+    .distinct()
+    .joinToString(",")
+
+extra["display_version"] = displayVersion
+extra["game_versions"] = supportedGameVersions
 
 repositories {
     mavenCentral()
@@ -45,6 +68,15 @@ tasks.test {
         events("passed", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
 }
 
 tasks.shadowJar {
@@ -60,4 +92,15 @@ tasks.shadowJar {
 // `build` should produce the shaded jar as the artifact.
 tasks.named("build") {
     dependsOn(tasks.shadowJar)
+}
+
+// Publish the shaded plugin jar as `de.zannagh.eunomia:eunomia-paper`. The core classes are already
+// shaded in, so no transitive maven dependencies are needed on the consumer side.
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "eunomia-paper"
+            artifact(tasks.shadowJar)
+        }
+    }
 }

@@ -1,0 +1,50 @@
+# Baseline coverage for the Codecov trend line. build.yml uploads each PR's coverage, but Codecov can
+# only show a delta if the BASE branch (main) has coverage too - build.yml runs on pull_request only,
+# so this fills the gap on every push to main. It does NOT build artifacts, only the coverage XML.
+
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+env:
+  EUNOMIA_BUILD_SCAN_PUBLISH: "true"
+
+jobs:
+  coverage:
+    name: Coverage baseline
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: java
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Gradle Environment
+        uses: zannagh/versionizer/setup-gradle-env@v1
+
+      - name: Unit tests + coverage
+        run: ./gradlew aggregatedCoverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: java/build/reports/jacoco/aggregate/jacocoAggregate.xml
+          disable_search: true
+          fail_ci_if_error: false
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

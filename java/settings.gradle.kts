@@ -13,6 +13,20 @@ plugins {
     id("com.gradle.develocity") version("4.3.2")
 }
 
+// Build-scan publishing is OPT-IN: only when EUNOMIA_BUILD_SCAN_PUBLISH=true is set do we agree to
+// the Gradle Terms of Use and upload the scan. This keeps a plain clone from ever publishing scans
+// (and silences the ToU warning on ordinary local builds); CI sets it on the runner.
+val publishBuildScan = "true".equals(System.getenv("EUNOMIA_BUILD_SCAN_PUBLISH"), ignoreCase = true)
+develocity {
+    buildScan {
+        termsOfUseUrl = "https://gradle.com/help/legal-terms-of-use"
+        if (publishBuildScan) {
+            termsOfUseAgree = "yes"
+        }
+        publishing.onlyIf { publishBuildScan }
+    }
+}
+
 stonecutter {
     kotlinController = true
     centralScript = "build.gradle.kts"
@@ -31,6 +45,7 @@ include(":core")
 // covers 1.20.1 through 26.x. Sibling subproject, not a stonecutter branch.
 include(":paper")
 
-// FCGT smoke matrix - IDE-visible JUnit suite that forks runClientGametest per variant and boots
-// a server (Fabric or Paper) to exercise the networking handshake end to end. Sibling subproject.
+// FCGT smoke suite - IDE-visible JUnit suite (its own `smokeTest` task, kept out of `check`) that
+// forks runClientGametest for each FCGT-enabled Fabric variant to exercise the networking handshake
+// end to end on a real client. Skips when no variant pins fabricapi.semver. Sibling subproject.
 include(":smoke")

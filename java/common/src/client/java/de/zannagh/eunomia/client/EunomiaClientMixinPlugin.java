@@ -27,9 +27,9 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        // The networking client mixins must apply. Other dynamically-listed mixins keep whatever
-        // gate they had (DevSkin stays off until it is wired up).
-        return mixinClassName.contains(".networking.");
+        // The networking client mixins and the generic screen-transformation hook must apply. Other
+        // dynamically-listed mixins keep whatever gate they had (DevSkin stays off until it is wired up).
+        return mixinClassName.contains(".networking.") || mixinClassName.contains(".ui.");
     }
 
     @Override
@@ -40,6 +40,8 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
     public List<String> getMixins() {
         List<String> mixins = new ArrayList<>();
         mixins.add("DevSkinMixin");
+        // The game-version-agnostic screen-transformation hook (registry in client.ui).
+        mixins.add("ui.ScreenMixin");
         //? if >= 1.20.5 {
         mixins.add("networking.ClientPacketListenerMixin");
         //?}

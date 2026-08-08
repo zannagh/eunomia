@@ -1,0 +1,54 @@
+name: "CodeQL"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - "main"
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.txt'
+      - '**/*.png'
+      - '**/*.yml'
+  schedule:
+    - cron: '16 20 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      security-events: write
+      packages: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # build-mode: none extracts straight from source - no compiler, no Gradle. eunomia is Java
+      # (the only Kotlin is buildSrc / gradle-conventions Gradle logic, which `none` skips and which
+      # carries nothing worth scanning). If shipped Kotlin is ever added, switch to a traced build.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-and-quality adds the maintainability query family on top of the security suite;
+          # both run fully on source, pairing well with build-mode: none.
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"
+          upload: true
