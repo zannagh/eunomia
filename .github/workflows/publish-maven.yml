@@ -49,7 +49,7 @@ jobs:
   publish:
     name: Publish to GitHub Packages
     needs: runner-and-version
-    runs-on: ${{ needs.runner-and-version.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
     permissions:
       contents: read
       packages: write

@@ -46,7 +46,7 @@ jobs:
   coverage:
     name: Coverage baseline
     needs: runner-and-version
-    runs-on: ${{ needs.runner-and-version.outputs.runner }}
+    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
     defaults:
       run:
         shell: bash
