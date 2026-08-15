@@ -18,9 +18,35 @@ env:
   EUNOMIA_BUILD_SCAN_PUBLISH: "true"
 
 jobs:
+  runner-and-version:
+    name: Determine Runner & Get Version
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+      fullSemVer: ${{ steps.version.outputs.fullSemVer }}
+    steps:
+      - name: Pick a runner
+        id: pick
+        uses: zannagh/versionizer/determine-runner@v1
+        with:
+          # Fine-grained PAT with Administration:read on this repo (lists runners). Missing/invalid
+          # token degrades gracefully to default-runs-on.
+          runner-token: ${{ secrets.RUNNER_TOKEN }}
+          required-labels: 'Linux,X64,build'
+          default-runs-on: 'ubuntu-latest'
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version
+        id: version
+        uses: zannagh/versionizer/calculate-version@v1
+
   coverage:
     name: Coverage baseline
-    runs-on: ubuntu-latest
+    needs: runner-and-version
+    runs-on: ${{ needs.runner-and-version.outputs.runner }}
     defaults:
       run:
         shell: bash
@@ -38,7 +64,7 @@ jobs:
         run: ./gradlew aggregatedCoverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: java/build/reports/jacoco/aggregate/jacocoAggregate.xml
