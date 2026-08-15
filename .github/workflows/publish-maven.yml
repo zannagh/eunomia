@@ -70,7 +70,7 @@ jobs:
 
       # The eunomia-publish convention reads GITHUB_ACTOR/GITHUB_TOKEN for the GitHub Packages repo.
       - name: Publish libraries
-        run: ./gradlew publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./java/gradlew publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,7 +78,7 @@ jobs:
       # Also publish the shared multiloader/stonecutter convention plugins (standalone build) so a
       # consumer can apply the same setup as a resolved plugin instead of copying buildSrc.
       - name: Publish convention plugins
-        run: ./gradlew -p gradle-conventions publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./java/gradlew -p gradle-conventions publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
