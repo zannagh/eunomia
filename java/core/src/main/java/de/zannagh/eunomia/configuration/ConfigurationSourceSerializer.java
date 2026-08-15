@@ -6,8 +6,9 @@ import com.google.gson.internal.Streams;
 import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
-import de.zannagh.eunomia.Eunomia;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -22,6 +23,8 @@ import java.util.function.Supplier;
  * Additionally, sets a flag if a mismatch between declaration and serialized content is detected.
  */
 public class ConfigurationSourceSerializer implements TypeAdapterFactory {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("eunomia-config");
 
     public ConfigurationSourceSerializer() {
         // Initialize the factory registry on first instantiation
@@ -123,7 +126,7 @@ public class ConfigurationSourceSerializer implements TypeAdapterFactory {
                         hasChangedComparedToSerializedContent = true;
                     }
                 } catch (Exception e) {
-                    Eunomia.LOGGER.error("Failed to initialize configuration field: {}", field.getName(), e);
+                    LOGGER.error("Failed to initialize configuration field: {}", field.getName(), e);
                 }
             }
         }

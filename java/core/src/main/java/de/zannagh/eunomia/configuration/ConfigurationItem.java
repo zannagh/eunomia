@@ -2,26 +2,17 @@ package de.zannagh.eunomia.configuration;
 
 import de.zannagh.eunomia.common.SemanticVersion;
 
-//? if >= 1.20.5 {
-import io.netty.buffer.ByteBuf;
-import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-//? }
-
 /**
  * Marker interface for configuration classes that should have their
  * ConfigurationItemBase fields automatically initialized when missing from JSON.
- * In < 1.20.5 the CustomPacketPayload does not yet exist, so the imports and extends are not needed.
+ *
+ * <p>This type is deliberately Minecraft-free: config items travel the wire as plain POJOs wrapped in
+ * the loader's single {@code CustomPacketPayload} (serialized as {@code gzip(json)} via the core
+ * {@code PayloadCodec}), so a config never has to be a payload itself.
  *
  * @since 0.1.0
  */
-public interface ConfigurationItem<T extends ConfigurationItem<T>>
-    //? if >= 1.20.5
-    extends CustomPacketPayload
-{
-
-    //? if >= 1.20.5
-    StreamCodec<ByteBuf, T> getCodec();
+public interface ConfigurationItem<T extends ConfigurationItem<T>> {
 
     T getValue();
 

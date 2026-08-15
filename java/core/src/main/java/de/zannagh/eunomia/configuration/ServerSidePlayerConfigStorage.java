@@ -2,9 +2,11 @@ package de.zannagh.eunomia.configuration;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.networking.CommunicationManager;
 import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
@@ -36,6 +38,8 @@ import java.util.function.Function;
  */
 public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigurationItem<C>> {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger("eunomia-config");
+
     private final Map<UUID, C> configs = new ConcurrentHashMap<>();
 
     private final Class<C> configClass;
@@ -55,9 +59,9 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
     }
 
     /**
-     * @param gson the {@link Gson} used for persistence; when {@code null}, {@link Eunomia#SERIALIZER} is
-     *             resolved lazily at each (de)serialization so a store built before {@link Eunomia#init()} still
-     *             works.
+     * @param gson the {@link Gson} used for persistence; when {@code null}, the shared
+     *             {@link NetworkSerializer#gson()} is resolved lazily at each (de)serialization so a store built
+     *             before the loader installs its enriched Gson still works.
      */
     public ServerSidePlayerConfigStorage(Class<C> configClass, Function<UUID, C> defaultFactory, Gson gson) {
         this.configClass = configClass;
@@ -182,7 +186,7 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
                 applyJson(Files.readString(file, StandardCharsets.UTF_8));
             }
         } catch (IOException | RuntimeException e) {
-            Eunomia.LOGGER.error("Failed to load player config store from {}; starting empty.", file, e);
+            LOGGER.error("Failed to load player config store from {}; starting empty.", file, e);
         }
     }
 
@@ -194,7 +198,7 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
             }
             Files.writeString(file, toJson(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            Eunomia.LOGGER.error("Failed to save player config store to {}.", file, e);
+            LOGGER.error("Failed to save player config store to {}.", file, e);
         }
     }
 
@@ -212,10 +216,10 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
     }
 
     private Gson serializer() {
-        Gson resolved = gson != null ? gson : Eunomia.SERIALIZER;
+        Gson resolved = gson != null ? gson : NetworkSerializer.gson();
         if (resolved == null) {
             throw new IllegalStateException(
-                    "No Gson available for ServerSidePlayerConfigStorage; pass one to the constructor or call Eunomia.init() first.");
+                    "No Gson available for ServerSidePlayerConfigStorage; pass one to the constructor or install one via NetworkSerializer.setGson(...) first.");
         }
         return resolved;
     }
