@@ -43,5 +43,17 @@ public abstract class ClientPacketListenerMixin extends ClientCommonPacketListen
     private void eunomia$onHandleLogin(CallbackInfo ci) {
         ClientConnectionEvents.onClientJoin((ClientPacketListener) (Object) this, minecraft);
     }
+
+    /**
+     * Fire the client-disconnect event when the play connection is torn down. Without this the
+     * registered disconnect handlers never run, so {@code ServerCapabilities} (and anything else keyed
+     * on leaving a server) is never reset - a client that next joins a vanilla server would keep the
+     * previous server's "present" state. {@code close()} is the no-arg teardown hook on
+     * {@link ClientPacketListener}, so this stays version-robust across the whole matrix.
+     */
+    @Inject(method = "close", at = @At("TAIL"))
+    private void eunomia$onClose(CallbackInfo ci) {
+        ClientConnectionEvents.onClientDisconnect(minecraft);
+    }
 }
 //?}
