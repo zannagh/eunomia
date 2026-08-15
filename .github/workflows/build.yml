@@ -22,12 +22,22 @@ env:
   EUNOMIA_BUILD_SCAN_PUBLISH: "true"
 
 jobs:
-  version:
-    name: Get Version
+  runner-and-version:
+    name: Determine Runner & Get Version
     runs-on: ubuntu-latest
     outputs:
+      runner: ${{ steps.pick.outputs.runner }}
       fullSemVer: ${{ steps.version.outputs.fullSemVer }}
     steps:
+      - name: Pick a runner
+        id: pick
+        uses: zannagh/versionizer/determine-runner@v1
+        with:
+          # Fine-grained PAT with Administration:read on this repo (lists runners). Missing/invalid
+          # token degrades gracefully to default-runs-on.
+          runner-token: ${{ secrets.RUNNER_TOKEN }}
+          required-labels: 'Linux,X64,build'
+          default-runs-on: 'ubuntu-latest'
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -39,8 +49,8 @@ jobs:
 
   build:
     name: Build & Test
-    needs: version
-    runs-on: ubuntu-latest
+    needs: runner-and-version
+    runs-on: ${{ needs.runner-and-version.outputs.runner }}
     permissions:
       contents: read
       pull-requests: write
@@ -75,12 +85,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ needs.version.outputs.fullSemVer }}
+          name: coverage-${{ needs.runner-and-version.outputs.fullSemVer }}
           path: 'java/**/build/reports/jacoco/**'
           if-no-files-found: warn
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: java/build/reports/jacoco/aggregate/jacocoAggregate.xml
@@ -94,11 +104,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Build & Stage Artifacts
-        run: ./gradlew stageArtifacts -PsemVer="${{ needs.version.outputs.fullSemVer }}" -Pprerelease="true"
+        run: ./gradlew stageArtifacts -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}" -Pprerelease="true"
 
       - name: Upload Staged Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: eunomia-${{ needs.version.outputs.fullSemVer }}
+          name: eunomia-${{ needs.runner-and-version.outputs.fullSemVer }}
           path: java/staging/*.jar
           if-no-files-found: warn
