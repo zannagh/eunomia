@@ -71,7 +71,7 @@ jobs:
       # JaCoCo report (mixins excluded). The Tier-3 client-spawning suite lives in its own `smokeTest`
       # task and is never reachable from here.
       - name: Unit tests + coverage
-        run: ./java/gradlew aggregatedCoverage
+        run: ./gradlew aggregatedCoverage
 
       - name: Coverage summary (PR comment)
         uses: madrapps/jacoco-report@v1.7.2

@@ -61,7 +61,7 @@ jobs:
           gradlew-path: "./java/gradlew"
 
       - name: Unit tests + coverage
-        run: ./java/gradlew aggregatedCoverage
+        run: ./gradlew aggregatedCoverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
