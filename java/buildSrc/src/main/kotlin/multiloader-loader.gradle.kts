@@ -59,5 +59,17 @@ tasks {
 
     jar {
         inputs.property("archivesName", base.archivesName)
+        // Bundle the MC-free :core classes directly into the shipped loader mod jar so it is
+        // self-contained. Without this the mod jar carries only the loader glue and crashes on init
+        // with NoClassDefFoundError for de.zannagh.eunomia.networking.* / configuration.* the moment
+        // it runs as a standalone jar (dev/smoke runs never caught it - the dev classpath has :core).
+        // Shaded rather than jar-in-jar'd because :core is a plain MC-free library (no fabric.mod.json),
+        // which Fabric's nested-jar loader would not pick up; its classes are MC-free so remapJar
+        // passes them through untouched on the remapped variants.
+        val coreMain = project(":core").extensions
+            .getByType(org.gradle.api.tasks.SourceSetContainer::class.java)
+            .getByName("main")
+        dependsOn(project(":core").tasks.named("classes"))
+        from(coreMain.output)
     }
 }

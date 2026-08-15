@@ -10,6 +10,8 @@ import net.minecraft.server.MinecraftServer;
 //? if >= 1.20.5 {
 import de.zannagh.eunomia.networking.payloads.EunomiaPayload;
 import de.zannagh.eunomia.networking.payloads.PayloadEntry;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
@@ -108,6 +110,23 @@ public final class LoaderNetwork {
 
     public static boolean isClientboundId(Identifier id) {
         return CLIENTBOUND.containsKey(id);
+    }
+
+    /**
+     * The codec for a serverbound channel, or {@code null} if {@code id} is not a registered eunomia
+     * serverbound channel. Used as the dynamic fallback in the custom-payload codec-injection mixins so
+     * a channel registered <em>after</em> the vanilla packet class initialised is still resolved (the
+     * static list snapshot only captures channels registered before {@code <clinit>}).
+     */
+    public static StreamCodec<? super ByteBuf, EunomiaPayload> serverboundCodec(Identifier id) {
+        PayloadEntry entry = SERVERBOUND.get(id);
+        return entry != null ? entry.codec() : null;
+    }
+
+    /** The codec for a clientbound channel, or {@code null} if unregistered. See {@link #serverboundCodec}. */
+    public static StreamCodec<? super ByteBuf, EunomiaPayload> clientboundCodec(Identifier id) {
+        PayloadEntry entry = CLIENTBOUND.get(id);
+        return entry != null ? entry.codec() : null;
     }
 
     /** Wraps a POJO in the per-channel {@link EunomiaPayload}, registering the type on demand. */
