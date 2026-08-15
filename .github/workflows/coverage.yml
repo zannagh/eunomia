@@ -31,6 +31,8 @@ jobs:
 
       - name: Setup Gradle Environment
         uses: zannagh/versionizer/setup-gradle-env@v1
+        with:
+          gradlew-path: "./java/gradlew"
 
       - name: Unit tests + coverage
         run: ./gradlew aggregatedCoverage

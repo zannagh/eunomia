@@ -54,6 +54,8 @@ jobs:
 
       - name: Setup Gradle Environment
         uses: zannagh/versionizer/setup-gradle-env@v1
+        with:
+          gradlew-path: "./java/gradlew"
 
       # Runs :core:test + :paper:test + the active :common:<variant>:test and merges them into one
       # JaCoCo report (mixins excluded). The Tier-3 client-spawning suite lives in its own `smokeTest`

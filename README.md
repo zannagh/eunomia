@@ -3,7 +3,7 @@ A Java library for common methodology in Minecraft mods for configurations and c
 
 ## Repo layout
 
-The Gradle build — every subproject (`core`, `common`, `fabric`, `neoforge`, `paper`, `smoke`,
+The Gradle build - every subproject (`core`, `common`, `fabric`, `neoforge`, `paper`, `smoke`,
 `buildSrc`, `gradle-conventions`), the wrapper and all build config — lives under [`java/`](java/).
 Build and test from there:
 

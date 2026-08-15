@@ -43,6 +43,8 @@ jobs:
 
       - name: Setup Gradle Environment
         uses: zannagh/versionizer/setup-gradle-env@v1
+        with:
+          gradlew-path: "./java/gradlew"
 
       # The eunomia-publish convention reads GITHUB_ACTOR/GITHUB_TOKEN for the GitHub Packages repo.
       - name: Publish libraries
