@@ -1,20 +1,5 @@
 # eunomia
-A Java library for common methodology in Minecraft mods for configurations and configurations - mod loader agnostic and without other dependencies.
-
-## Repo layout
-
-The Gradle build - every subproject (`core`, `common`, `fabric`, `neoforge`, `paper`, `smoke`,
-`buildSrc`, `gradle-conventions`), the wrapper and all build config — lives under [`java/`](java/).
-Build and test from there:
-
-```bash
-cd java
-./gradlew build                # all loaders + Paper
-./gradlew test                 # all unit tests (core + paper + the active common variant)
-./gradlew aggregatedCoverage   # unit tests + one merged JaCoCo report (build/reports/jacoco/aggregate)
-./gradlew smokeTest            # Tier-3 FCGT client smoke (skips unless a variant enables fabricapi.semver)
-./gradlew stageArtifacts       # build every loader variant into staging/ + a versions.json
-```
+A Java library for common methodology in Minecraft mods for configurations and networking - mod loader agnostic and without other dependencies. Easy to develop against by adding a Maven dependency for IDEs and a mod dependency for runtime.
 
 ## Consuming eunomia
 
