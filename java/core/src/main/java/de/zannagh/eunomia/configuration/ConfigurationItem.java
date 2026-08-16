@@ -8,16 +8,31 @@ import de.zannagh.eunomia.common.SemanticVersion;
  *
  * <p>This type is deliberately Minecraft-free: config items travel the wire as plain POJOs wrapped in
  * the loader's single {@code CustomPacketPayload} (serialized as {@code gzip(json)} via the core
- * {@code PayloadCodec}), so a config never has to be a payload itself.
+ * {@code PayloadCodec}), so a config never has to be a payload itself.</p>
+ *
+ * Any inheritor of this interface should be registered with {@link ConfigurationItemFactoryRegistry} for
+ * serialization.
  *
  * @since 0.1.0
  */
 public interface ConfigurationItem<T extends ConfigurationItem<T>> {
 
+    /**
+     * Retrieves the current value of the configuration item.
+     * @return The current value of the configuration item.
+     */
     T getValue();
 
+    /**
+     * Sets the new value of the configuration item.
+     * @param newValue The new value of the configuration item.
+     */
     void setValue(T newValue);
 
+    /**
+     * Retrieves the default value of the configuration item.
+     * @return The default value of the configuration item.
+     */
     T getDefaultValue();
 
     /**
@@ -62,6 +77,11 @@ public interface ConfigurationItem<T extends ConfigurationItem<T>> {
         return getSchemaVersion().isSmallerThan(getCurrentSchemaVersion());
     }
 
+    /**
+     * Migrates the configuration item from an older schema version to the current schema version.
+     * @param old The configuration item with the older schema version.
+     * @return The migrated configuration item with the current schema version.
+     */
     T migrateFrom(T old);
 
     /**

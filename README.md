@@ -5,9 +5,9 @@ A Java library for common methodology in Minecraft mods for configurations and n
 
 eunomia publishes maven artifacts so another mod can depend on it:
 
-- `de.zannagh.eunomia:eunomia-core` — the MC-free networking/framework library
-- `de.zannagh.eunomia:eunomia-common` — the active game-version's common jar
-- `de.zannagh.eunomia:eunomia-paper` — the shaded Paper plugin
+- `de.zannagh.eunomia:eunomia-core` - the MC-free networking/framework library
+- `de.zannagh.eunomia:eunomia-common` - the active game-version's common jar
+- `de.zannagh.eunomia:eunomia-paper` - the shaded Paper plugin
 
 ```bash
 cd java

@@ -3,8 +3,8 @@
 #   - de.zannagh.eunomia:eunomia-paper  (the shaded Paper plugin)
 #   - de.zannagh.eunomia:eunomia-common (the active stonecutter variant's common jar)
 #
-# This is the ONLY publish workflow - there are deliberately NO uploads to Modrinth/CurseForge/Hangar
-# (eunomia is not released as a consumer-facing mod yet).
+# This workflow publishes the Maven artifacts only. Consumer-facing mod uploads to Modrinth and
+# CurseForge (Fabric/NeoForge) live in publish-platforms.yml, driven by a manual GitHub release.
 #
 # NOTE: `publish` covers the active common variant only. To publish the full per-game-version common
 # matrix, switch the active variant (`./gradlew "Set active project to <variant>"`) and re-run, or add

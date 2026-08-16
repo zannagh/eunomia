@@ -1,0 +1,92 @@
+name: Prepare Platform Upload
+description: >
+  Finds the correct JAR for a Minecraft version/loader in the staged artifacts and prepares the
+  Modrinth/CurseForge version metadata (number, display name, type). Eunomia publishes only its
+  Fabric and NeoForge loader jars to the mod platforms.
+
+inputs:
+  display-version:
+    description: Display version string for naming (e.g. "mc-1.20.0-1" or "1.21.4")
+    required: true
+  mod-version:
+    description: The mod version string
+    required: true
+  is-prerelease:
+    description: Whether this is a prerelease build
+    required: true
+  artifact-path:
+    description: Path to the downloaded artifacts directory
+    required: true
+  loader:
+    description: The mod loader (fabric, neoforge)
+    required: true
+
+outputs:
+  found:
+    description: Whether a JAR was found for this Minecraft version/loader
+    value: ${{ steps.find-jar.outputs.found }}
+  jar_path:
+    description: Path to the found JAR file
+    value: ${{ steps.find-jar.outputs.path }}
+  version_number:
+    description: The platform version number (e.g. fab-1.21.4-0.2.0)
+    value: ${{ steps.info.outputs.version_number }}
+  version_name:
+    description: The platform display name (e.g. [Fabric] 1.21.4 - 0.2.0)
+    value: ${{ steps.info.outputs.version_name }}
+  version_type:
+    description: The platform version type (release or beta)
+    value: ${{ steps.info.outputs.version_type }}
+
+runs:
+  using: composite
+  steps:
+    - name: Find JAR
+      id: find-jar
+      shell: bash
+      run: |
+        # stageArtifacts names loader jars "eunomia-<loader>-<semver>+<display_version>.jar".
+        JAR=$(find ${{ inputs.artifact-path }} -maxdepth 1 -name "eunomia-${{ inputs.loader }}-*+${{ inputs.display-version }}.jar" ! -name "*-sources.jar" 2>/dev/null | head -n1)
+        if [[ -z "$JAR" ]]; then
+          echo "No JAR found for ${{ inputs.loader }} ${{ inputs.display-version }}"
+          echo "found=false" >> $GITHUB_OUTPUT
+        else
+          echo "Found JAR: $JAR"
+          echo "found=true" >> $GITHUB_OUTPUT
+          echo "path=$JAR" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Prepare version info
+      if: steps.find-jar.outputs.found == 'true'
+      id: info
+      shell: bash
+      run: |
+        DISPLAY_VERSION="${{ inputs.display-version }}"
+        MOD_VERSION="${{ inputs.mod-version }}"
+        IS_PRERELEASE="${{ inputs.is-prerelease }}"
+        LOADER="${{ inputs.loader }}"
+
+        # Transform snapshot-X to pre.X for the version number (e.g. 26.1-snapshot-4 -> 26.1-pre.4).
+        DISPLAY_VERSION_SHORT="${DISPLAY_VERSION//-snapshot-/-pre.}"
+
+        # Short loader prefix and compact prerelease tag to keep the version string short,
+        # e.g. neoforge-1.21.5-0.10.0-pre.1 -> neo-1.21.5-0.10.0-p.1
+        case "$LOADER" in
+          fabric)   SHORT_LOADER="fab" ;;
+          neoforge) SHORT_LOADER="neo" ;;
+          *)        SHORT_LOADER="$LOADER" ;;
+        esac
+        SHORT_MOD_VERSION="${MOD_VERSION//-pre./-p.}"
+
+        VERSION_NUMBER="${SHORT_LOADER}-${DISPLAY_VERSION_SHORT}-${SHORT_MOD_VERSION}"
+        VERSION_NAME="[${LOADER^}] ${DISPLAY_VERSION} - ${MOD_VERSION}"
+
+        if [[ "$IS_PRERELEASE" == "true" ]]; then
+          VERSION_TYPE="beta"
+        else
+          VERSION_TYPE="release"
+        fi
+
+        echo "version_number=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+        echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+        echo "version_type=$VERSION_TYPE" >> $GITHUB_OUTPUT
