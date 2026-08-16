@@ -1,0 +1,382 @@
+# Manual release -> mod platforms. Publishing the consumer-facing mod jars is driven entirely from
+# here (Maven artifacts are a separate concern, see publish-maven.yml).
+#
+# Trigger model (ported from armor-hider):
+#   - release: published      -> the manual release. Builds every loader variant and uploads all
+#                                Fabric/NeoForge versions to Modrinth + CurseForge with the changelog
+#                                and per-version metadata, and attaches the jars to the GitHub release.
+#   - push: main              -> creates an automatic GitHub *prerelease* only. It does NOT publish to
+#                                the mod platforms (those are gated on is_manual_release == 'true').
+#   - workflow_dispatch       -> dry-run / force-release knobs for testing the pipeline.
+#
+# Scope decisions for eunomia (differs from armor-hider):
+#   - Only the Fabric and NeoForge loader jars go to the platforms. The Paper plugin is published to
+#     Maven only (it is a library dependency, not a consumer-facing mod), so there is no Bukkit-plugins
+#     or Hangar job here.
+#   - CurseForge project 1654849 is a Minecraft > Mods project, so Fabric/NeoForge upload straight to it.
+#
+# The Gradle build lives under java/, so gradle steps set working-directory: java and the staged jars
+# are under java/staging/.
+
+name: Publish (Platforms)
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force create a prerelease even if only non-code files changed'
+        required: false
+        default: false
+        type: boolean
+      dry_run:
+        description: 'Run the full pipeline without publishing (overrides PUBLISH_TO_* and skips GitHub release creation)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt in to publishing Gradle build scans (gated on this var in settings.gradle.kts).
+  EUNOMIA_BUILD_SCAN_PUBLISH: "true"
+  # Modrinth project (slug "eunomia"). The ID is stable across slug renames.
+  MODRINTH_PROJECT_ID: 'BvzQw4wL'
+  # CurseForge "eunomia" in the Minecraft > Mods section (classId 6): the Fabric/NeoForge jars.
+  CURSEFORGE_PROJECT_ID: '1654849'
+  # Set to 'true' to enable actual publishing, 'false' for dry-run.
+  PUBLISH_TO_MODRINTH: 'true'
+  PUBLISH_TO_CURSEFORGE: 'true'
+
+jobs:
+  # ============================================================================
+  # PREFLIGHT - one runner does all the release-decision work
+  # ============================================================================
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.prep.outputs.runner }}
+      should_release: ${{ steps.prep.outputs.should_release }}
+      is_manual_release: ${{ steps.prep.outputs.is_manual_release }}
+      skip_reason: ${{ steps.prep.outputs.skip_reason }}
+      semver: ${{ steps.prep.outputs.semver }}
+      prerelease_number: ${{ steps.prep.outputs.prerelease_number }}
+      full_semver: ${{ steps.prep.outputs.full_semver }}
+      commits_since: ${{ steps.prep.outputs.commits_since }}
+      mod_version: ${{ steps.prep.outputs.mod_version }}
+      is_prerelease: ${{ steps.prep.outputs.is_prerelease }}
+      version_exists: ${{ steps.prep.outputs.version_exists }}
+      version_ok: ${{ steps.prep.outputs.version_ok }}
+      changelog_full: ${{ steps.prep.outputs.changelog_full }}
+      changelog_user: ${{ steps.prep.outputs.changelog_user }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release
+        id: prep
+        uses: ./.github/actions/prepare-release
+        with:
+          event-name: ${{ github.event_name }}
+          is-dry-run: ${{ inputs.dry_run }}
+          force-release: ${{ inputs.force_release }}
+          release-tag-name: ${{ github.event.release.tag_name }}
+          release-prerelease: ${{ github.event.release.prerelease }}
+          release-body: ${{ github.event.release.body }}
+          # Fine-grained PAT with Administration:read on this repo (lists runners).
+          # Missing/invalid token degrades gracefully to default-runs-on.
+          runner-token: ${{ secrets.RUNNER_TOKEN }}
+          modrinth-project-id: ${{ env.MODRINTH_PROJECT_ID }}
+          repository: ${{ github.repository }}
+
+  build:
+    name: Build
+    needs: [prepare]
+    runs-on: ${{ fromJSON(needs.prepare.outputs.runner) }}
+    if: "!cancelled() && needs.prepare.result == 'success'"
+    defaults:
+      run:
+        shell: bash
+        working-directory: java
+    outputs:
+      # Pass-through from prepare so downstream jobs keep reading needs.build.outputs.*.
+      mod_version: ${{ needs.prepare.outputs.mod_version }}
+      is_prerelease: ${{ needs.prepare.outputs.is_prerelease }}
+      supported_versions: ${{ steps.versions.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Gradle Environment
+        uses: zannagh/versionizer/setup-gradle-env@v1
+        with:
+          gradlew-path: "./java/gradlew"
+
+      - name: Cache NeoForge NFRT Artifacts
+        uses: actions/cache@v6
+        with:
+          path: java/neoforge/versions/*/build/moddev/artifacts/
+          key: nfrt-${{ runner.os }}-${{ hashFiles('java/neoforge/versions/*/gradle.properties') }}
+
+      - name: Build & Stage Artifacts
+        run: |
+          ./gradlew stageArtifacts \
+            -PsemVer="${{ needs.prepare.outputs.mod_version }}" \
+            -Pprerelease="${{ needs.prepare.outputs.is_prerelease }}"
+
+      - name: Read Supported Versions
+        id: versions
+        run: |
+          # Only the Fabric/NeoForge loader groups are published to the platforms; the version-agnostic
+          # "paper" jar is intentionally excluded (Maven only).
+          MATRIX=$(jq -c '[
+            (.fabric // {} | keys[] | {minecraft: ., loader: "fabric"}),
+            (.neoforge // {} | keys[] | {minecraft: ., loader: "neoforge"})
+          ]' staging/versions.json)
+          echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: eunomia-${{ needs.prepare.outputs.mod_version }}
+          path: |
+            java/staging/*.jar
+            java/staging/versions.json
+          if-no-files-found: error
+
+  # ============================================================================
+  # CREATE GITHUB PRERELEASE (automatic, on push to main)
+  # ============================================================================
+  create-prerelease:
+    name: Create GitHub Prerelease
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    if: |
+      needs.prepare.outputs.should_release == 'true' &&
+      needs.prepare.outputs.is_manual_release != 'true' &&
+      needs.prepare.outputs.version_exists != 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Create Prerelease
+        uses: zannagh/versionizer/create-prerelease@v1
+        with:
+          version: ${{ needs.build.outputs.mod_version }}
+          changelog: ${{ needs.prepare.outputs.changelog_full }}
+          artifact-name: eunomia-${{ needs.build.outputs.mod_version }}
+          artifact-pattern: artifacts/**/*.jar
+          dry-run: ${{ inputs.dry_run }}
+
+  # ============================================================================
+  # UPLOAD TO GITHUB RELEASE (manual releases)
+  # ============================================================================
+  upload-to-release:
+    name: Upload to GitHub Release
+    needs: [prepare, build]
+    # version_ok is the soft downgrade gate: a downgrade warns and skips this upload without failing.
+    if: |
+      needs.prepare.outputs.is_manual_release == 'true' &&
+      needs.prepare.outputs.version_ok == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2.4.2
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: artifacts/**/*.jar
+
+  # ============================================================================
+  # PUBLISH TO MODRINTH (Fabric + NeoForge)
+  # ============================================================================
+  publish-modrinth:
+    name: Publish to Modrinth
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    if: |
+      needs.prepare.outputs.should_release == 'true' &&
+      needs.prepare.outputs.is_manual_release == 'true' &&
+      needs.prepare.outputs.version_ok == 'true' &&
+      needs.prepare.outputs.version_exists != 'true'
+    strategy:
+      fail-fast: false
+      # Serialize: parallel jobs hammer Modrinth's API and get rate-limited (429). mc-publish resolves
+      # loaders/game-versions against Modrinth's tag endpoints, and a throttled fetch silently yields
+      # empty metadata - the version publishes with no loaders/game_versions.
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.supported_versions) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: eunomia-${{ needs.build.outputs.mod_version }}
+          path: artifacts
+
+      - name: Get game versions
+        id: game-versions
+        run: |
+          VERSIONS=$(jq -r '."${{ matrix.loader }}"."${{ matrix.minecraft }}" // ["${{ matrix.minecraft }}"] | .[]' artifacts/versions.json)
+          echo "list<<EOF" >> $GITHUB_OUTPUT
+          echo "$VERSIONS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Prepare Modrinth Upload
+        id: modrinth
+        uses: ./.github/actions/prepare-platform-upload
+        with:
+          display-version: ${{ matrix.minecraft }}
+          mod-version: ${{ needs.build.outputs.mod_version }}
+          is-prerelease: ${{ needs.build.outputs.is_prerelease }}
+          artifact-path: artifacts
+          loader: ${{ matrix.loader }}
+
+      - name: Publish to Modrinth
+        if: ${{ steps.modrinth.outputs.found == 'true' && env.PUBLISH_TO_MODRINTH == 'true' && !inputs.dry_run }}
+        uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3
+        with:
+          modrinth-id: ${{ env.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: ${{ steps.modrinth.outputs.jar_path }}
+          name: ${{ steps.modrinth.outputs.version_name }}
+          version: ${{ steps.modrinth.outputs.version_number }}
+          version-type: ${{ steps.modrinth.outputs.version_type }}
+          loaders: |
+            ${{ matrix.loader }}
+            ${{ matrix.loader == 'fabric' && 'quilt' || '' }}
+          game-versions: |
+            ${{ steps.game-versions.outputs.list }}
+          game-version-filter: any
+          changelog: ${{ needs.prepare.outputs.changelog_user }}
+          modrinth-featured: false
+          retry-attempts: 2
+          retry-delay: 10000
+
+  # ============================================================================
+  # PUBLISH TO CURSEFORGE (Fabric + NeoForge, Mods section)
+  # ============================================================================
+  publish-curseforge:
+    name: Publish to CurseForge
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    if: |
+      needs.prepare.outputs.should_release == 'true' &&
+      needs.prepare.outputs.is_manual_release == 'true' &&
+      needs.prepare.outputs.version_ok == 'true'
+    strategy:
+      fail-fast: false
+      # Serialize to avoid the same rate-limit race as Modrinth (see publish-modrinth above).
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.build.outputs.supported_versions) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: eunomia-${{ needs.build.outputs.mod_version }}
+          path: artifacts
+
+      - name: Get game versions
+        id: game-versions
+        run: |
+          VERSIONS=$(jq -r '."${{ matrix.loader }}"."${{ matrix.minecraft }}" // ["${{ matrix.minecraft }}"] | .[]' artifacts/versions.json)
+          echo "list<<EOF" >> $GITHUB_OUTPUT
+          echo "$VERSIONS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Prepare CurseForge Upload
+        id: curseforge
+        uses: ./.github/actions/prepare-platform-upload
+        with:
+          display-version: ${{ matrix.minecraft }}
+          mod-version: ${{ needs.build.outputs.mod_version }}
+          is-prerelease: ${{ needs.build.outputs.is_prerelease }}
+          artifact-path: artifacts
+          loader: ${{ matrix.loader }}
+
+      - name: Publish to CurseForge
+        if: ${{ steps.curseforge.outputs.found == 'true' && env.PUBLISH_TO_CURSEFORGE == 'true' && !inputs.dry_run }}
+        uses: Kira-NT/mc-publish@52307b03863581dec6b652b83e597aec02ebb075 # v3.3
+        with:
+          curseforge-id: ${{ env.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: ${{ steps.curseforge.outputs.jar_path }}
+          name: ${{ steps.curseforge.outputs.version_name }}
+          version: ${{ steps.curseforge.outputs.version_number }}
+          version-type: ${{ steps.curseforge.outputs.version_type }}
+          loaders: |
+            ${{ matrix.loader }}
+            ${{ matrix.loader == 'fabric' && 'quilt' || '' }}
+          game-versions: |
+            ${{ steps.game-versions.outputs.list }}
+          game-version-filter: any
+          changelog: ${{ needs.prepare.outputs.changelog_user }}
+          retry-attempts: 2
+          retry-delay: 10000
+          # Warn (don't fail) when CurseForge lacks a game version, e.g. brand-new snapshots CF hasn't
+          # added yet. Re-publish once CF catches up.
+          curseforge-fail-mode: warn
+
+  # ============================================================================
+  # SUMMARY
+  # ============================================================================
+  summary:
+    name: Workflow Summary
+    needs: [prepare, build, create-prerelease, upload-to-release, publish-modrinth, publish-curseforge]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate Summary
+        uses: zannagh/versionizer/workflow-summary@v1
+        with:
+          version: ${{ needs.build.outputs.mod_version }}
+          is-prerelease: ${{ needs.build.outputs.is_prerelease }}
+          semver: ${{ needs.prepare.outputs.semver }}
+          full-semver: ${{ needs.prepare.outputs.full_semver }}
+          prerelease-number: ${{ needs.prepare.outputs.prerelease_number }}
+          commits-since: ${{ needs.prepare.outputs.commits_since }}
+          should-release: ${{ needs.prepare.outputs.should_release }}
+          is-manual-release: ${{ needs.prepare.outputs.is_manual_release }}
+          skip-reason: ${{ needs.prepare.outputs.skip_reason }}
+          changelog: ${{ needs.prepare.outputs.changelog_full }}
+          job-results: |
+            Prepare Release=${{ needs.prepare.result }}
+            Build=${{ needs.build.result }}
+            Create Prerelease=${{ needs.create-prerelease.result }}
+            Upload to Release=${{ needs.upload-to-release.result }}
+            Publish to Modrinth=${{ needs.publish-modrinth.result }}
+            Publish to CurseForge=${{ needs.publish-curseforge.result }}
+          additional-sections: |
+            ### Modrinth
+
+            - **Project ID**: `${{ env.MODRINTH_PROJECT_ID }}`
+            - **Version Already Exists**: `${{ needs.prepare.outputs.version_exists }}`
+            - **Publish Enabled**: `${{ env.PUBLISH_TO_MODRINTH }}`
+
+            ### CurseForge (Mods)
+
+            - **Project ID**: `${{ env.CURSEFORGE_PROJECT_ID }}`
+            - **Publish Enabled**: `${{ env.PUBLISH_TO_CURSEFORGE }}`
+            - **Note**: Fabric/NeoForge only - the Paper plugin is published to Maven, not the platforms.

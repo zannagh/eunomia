@@ -35,7 +35,7 @@ public final class EunomiaClient {
                     .execute(CommunicationManager::markServerProbeTimedOut);
         });
         ClientConnectionEvents.registerDisconnect(client ->
-                CommunicationManager.serverCapabilities().reset());
+                CommunicationManager.onClientDisconnect());
 
         Eunomia.LOGGER.info("Eunomia client initialized");
     }

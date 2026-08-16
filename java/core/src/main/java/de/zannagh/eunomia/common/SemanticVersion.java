@@ -1,28 +1,22 @@
 package de.zannagh.eunomia.common;
 
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 import java.util.Comparator;
 
-public class SemanticVersion implements Comparable<SemanticVersion>, Comparator<SemanticVersion> {
-
-    public final int major;
-
-    public final int minor;
-
-    public final int patch;
-
-    @Nullable
-    public final String build;
-
-    public SemanticVersion(int major, int minor, int patch, @Nullable String build) {
-        this.major = major;
-        this.minor = minor;
-        this.patch = patch;
-        this.build = build;
-    }
+/**
+ * Represents a semantic version, following the semantic versioning specification.
+ *
+ * @since 0.1.0
+ */
+public record SemanticVersion(
+        int major,
+        int minor,
+        int patch,
+      @Nullable String build) implements Comparable<SemanticVersion>, Comparator<SemanticVersion> {
 
     @Override
-    public String toString() {
+    public @NonNull String toString() {
         var returnValue = major + "." + minor + "." + patch;
         if (build != null && !build.isEmpty()) {
             returnValue += "-" + build;
@@ -30,7 +24,12 @@ public class SemanticVersion implements Comparable<SemanticVersion>, Comparator<
         return returnValue;
     }
 
-    public boolean isSmallerThan(SemanticVersion other){
+    /**
+     * Whether this semantic version is smaller than the other semantic version.
+     * @param other The semantic version to compare to.
+     * @return True if this semantic version is smaller than the other semantic version.
+     */
+    public boolean isSmallerThan(SemanticVersion other) {
         return compareTo(other) < 0;
     }
 
@@ -55,7 +54,7 @@ public class SemanticVersion implements Comparable<SemanticVersion>, Comparator<
         return patchResult;
     }
 
-    private int compareBuild(SemanticVersion other){
+    private int compareBuild(SemanticVersion other) {
         return 0; // TODO, compare SemVer builds which can contain string values.
     }
 

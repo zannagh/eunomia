@@ -1,7 +1,5 @@
 package de.zannagh.eunomia.configuration;
 
-import de.zannagh.eunomia.configuration.ConfigurationItemBase;
-
 import java.lang.reflect.Constructor;
 import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +9,8 @@ import java.util.function.Supplier;
 /**
  * Centralized registry for ConfigurationItemBase factory methods.
  * Explicitly registers all implementations and creates both single-param and no-arg factories.
+ *
+ * @since 0.1.0
  */
 public class ConfigurationItemFactoryRegistry {
 

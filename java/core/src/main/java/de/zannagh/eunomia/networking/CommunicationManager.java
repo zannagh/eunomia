@@ -132,9 +132,38 @@ public final class CommunicationManager {
 
     // ── Sending (mod-facing) ────────────────────────────────────────────────────────────────────
 
-    /** Client → server. No-ops with a debug log if no client transport is installed (dedicated server). */
+    /**
+     * Client → server using the default {@link SendOptions#AFTER_SUCCESSFUL_HANDSHAKE} policy: the
+     * packet is held until the server-capability probe resolves, then sent if the server runs Eunomia
+     * and dropped otherwise. Call the {@link #sendToServer(PacketType, Object, SendOptions) three-arg
+     * overload} to send unconditionally ({@link SendOptions#ALWAYS}) or to additionally require the
+     * server to receive this channel ({@link SendOptions#IF_SERVER_SUPPORTS}).
+     */
     public static <T> void sendToServer(PacketType<T> type, T data) {
+        sendToServer(type, data, SendOptions.AFTER_SUCCESSFUL_HANDSHAKE);
+    }
+
+    /**
+     * Client → server honoring {@code options}. See {@link SendOptions} for the gating each policy
+     * applies. Direction is validated eagerly, so sending a clientbound packet throws immediately
+     * regardless of the policy.
+     */
+    public static <T> void sendToServer(PacketType<T> type, T data, SendOptions options) {
         requireDirection(type, true);
+        switch (options) {
+            case ALWAYS -> sendToServerNow(type, data);
+            case AFTER_SUCCESSFUL_HANDSHAKE -> ClientSendGate.send(type, data, false);
+            case IF_SERVER_SUPPORTS -> ClientSendGate.send(type, data, true);
+        }
+    }
+
+    /**
+     * Sends a serverbound packet straight through the client transport, bypassing the capability gate.
+     * Backs {@link SendOptions#ALWAYS} and the gate's own flush, and is used for the handshake probe
+     * (which must go out before any capability is known). No-ops with a debug log if no client
+     * transport is installed (dedicated server).
+     */
+    static <T> void sendToServerNow(PacketType<T> type, T data) {
         ClientTransport transport = clientTransport;
         if (transport == null) {
             LOGGER.debug("No client transport installed; dropping serverbound {}", type.channelKey());
@@ -270,13 +299,26 @@ public final class CommunicationManager {
 
     /** Client-side: reset capability state and send the HELLO probe. Call on each join. */
     public static void beginServerProbe() {
+        // Drop any sends queued against the previous connection, then re-probe. HELLO must bypass the
+        // gate (it is what resolves the capability the gate waits on), so it goes out immediately.
+        ClientSendGate.reset();
         SERVER_CAPABILITIES.reset();
-        sendToServer(HandshakePackets.HELLO, new ClientHelloPayload(HandshakePackets.PROTOCOL_VERSION));
+        sendToServerNow(HandshakePackets.HELLO, new ClientHelloPayload(HandshakePackets.PROTOCOL_VERSION));
     }
 
     /** Client-side: conclude the probe as "no Eunomia server" if no ACK arrived. Call after a timeout. */
     public static void markServerProbeTimedOut() {
         SERVER_CAPABILITIES.markAbsentIfUnresolved();
+    }
+
+    /**
+     * Client-side: tear down per-connection state when the play connection ends. Resets the capability
+     * view and drops any sends still queued behind the gate, so nothing leaks into the next connection.
+     * Call from the client disconnect handler.
+     */
+    public static void onClientDisconnect() {
+        SERVER_CAPABILITIES.reset();
+        ClientSendGate.reset();
     }
 
     private static void requireDirection(PacketType<?> type, boolean serverbound) {
@@ -304,5 +346,6 @@ public final class CommunicationManager {
         serverTransport = null;
         clientTransport = null;
         SERVER_CAPABILITIES.reset();
+        ClientSendGate.reset();
     }
 }

@@ -3,9 +3,14 @@ package de.zannagh.eunomia.configuration;
 /**
  * Represents a base class for configuration items, encapsulating a single value of a generic type.
  * This class provides mechanisms for managing the value, defaulting it where necessary,
- * and enforcing type safety.
+ * and enforcing type safety.<br/>
+ *
+ * Any inheritor of this class should be registered with {@link ConfigurationItemFactoryRegistry} for
+ * serialization.
  *
  * @param <T> The type of the value held by this configuration item.
+ *
+ * @since 0.1.0
  */
 public abstract class ConfigurationItemBase<T extends ConfigurationItem<T>> implements ConfigurationItem<T> {
 
@@ -19,10 +24,16 @@ public abstract class ConfigurationItemBase<T extends ConfigurationItem<T>> impl
         this.value = getDefaultValue();
     }
 
+    /**
+     * @inheritDoc
+     */
     public T getValue() {
         return value;
     }
 
+    /**
+     * @inheritDoc
+     */
     public void setValue(T value) {
         this.value = sanitize(value);
     }
@@ -40,5 +51,8 @@ public abstract class ConfigurationItemBase<T extends ConfigurationItem<T>> impl
         return candidate == null ? getDefaultValue() : candidate;
     }
 
+    /**
+     * @inheritDoc
+     */
     public abstract T getDefaultValue();
 }
