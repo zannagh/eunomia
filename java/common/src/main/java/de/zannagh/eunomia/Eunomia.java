@@ -29,8 +29,12 @@ public final class Eunomia {
 
     public static void init() {
         SERIALIZER = new JsonSerializer().GSON;
-        // The networking core resolves payloads with this Gson (config type adapters included).
-        NetworkSerializer.setGson(SERIALIZER);
+        // Install as a DEFAULT only: a consuming mod resolves payloads with its own Gson (its config type
+        // adapters included) via NetworkSerializer.setGson. Using installDefaultGson here means that
+        // explicit install always wins no matter which mod's init runs first - the two used to race, and
+        // when this bare Gson clobbered the consumer's, its typed payloads deserialized through Gson's
+        // reflective adapter and failed on the consumer's custom on-wire shapes.
+        NetworkSerializer.installDefaultGson(SERIALIZER);
         // Install the loader networking adapter (registration listener + server transport), then the
         // example server handlers so a fresh install already answers the eunomia:* example packets.
         LoaderNetwork.init();
