@@ -27,8 +27,9 @@ public final class EunomiaPaperPlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // Resolve payloads with a plain Gson (the shared example POJOs need no custom adapters).
-        NetworkSerializer.setGson(new Gson());
+        // Resolve payloads with a plain Gson (the shared example POJOs need no custom adapters). Installed
+        // as a default so a plugin embedding Eunomia can still install its own richer Gson via setGson.
+        NetworkSerializer.installDefaultGson(new Gson());
 
         transport = new PaperServerTransport(this);
         CommunicationManager.setServerTransport(transport);

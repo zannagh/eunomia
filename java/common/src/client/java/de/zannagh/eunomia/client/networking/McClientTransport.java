@@ -13,7 +13,7 @@ import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 /*import de.zannagh.eunomia.networking.serialization.PayloadCodec;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.protocol.game.ServerboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.ServerboundCustomPayloadPacket;
 import net.minecraft.resources.Identifier;
 *///?}
 
