@@ -1,10 +1,11 @@
 package de.zannagh.eunomia.paper;
 
 import com.google.gson.Gson;
-import de.zannagh.eunomia.networking.CommunicationManager;
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.examples.ExampleHandlers;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
+import de.zannagh.eunomia.networking.examples.ExampleReplication;
 import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
 import de.zannagh.eunomia.paper.net.ChannelSubscriber;
 import de.zannagh.eunomia.paper.net.PaperMessageListener;
@@ -40,6 +41,9 @@ public final class EunomiaPaperPlugin extends JavaPlugin {
         CommunicationManager.register(ExamplePackets.PONG);
         CommunicationManager.register(ExamplePackets.PERMISSION);
         ExampleHandlers.registerPingPong();
+        // Register the replicated example store BEFORE channel registration so its sync channels
+        // (the bidirectional data channel + eunomia:store_sync) are picked up and force-subscribed below.
+        ExampleReplication.enableServer();
         // Answer capability probes so a client can detect this Paper server speaks Eunomia.
         CommunicationManager.enableServerHandshake();
 

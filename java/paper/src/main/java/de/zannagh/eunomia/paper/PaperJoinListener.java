@@ -1,5 +1,6 @@
 package de.zannagh.eunomia.paper;
 
+import de.zannagh.eunomia.keyed.ReplicatedStores;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
 import de.zannagh.eunomia.networking.examples.PermissionPayload;
 import de.zannagh.eunomia.paper.net.ChannelSubscriber;
@@ -30,5 +31,7 @@ public final class PaperJoinListener implements Listener {
         subscriber.subscribe(player);
         int level = player.isOp() ? 4 : 0;
         transport.send(player, ExamplePackets.PERMISSION, new PermissionPayload(level));
+        // Dump every replicated store to the newcomer (subscribed above, so the sends land).
+        ReplicatedStores.pushAllTo(player.getUniqueId());
     }
 }

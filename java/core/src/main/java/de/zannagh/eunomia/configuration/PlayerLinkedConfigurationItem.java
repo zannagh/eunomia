@@ -13,7 +13,8 @@ import java.util.UUID;
  * @param <T> the self type of the configuration (CRTP), e.g. {@code MyConfig implements PlayerLinkedConfigurationItem<MyConfig>}
  * @since 0.1.0
  */
-public interface PlayerLinkedConfigurationItem<T extends ConfigurationItem<T>> extends ConfigurationItem<T> {
+public interface PlayerLinkedConfigurationItem<T extends ConfigurationItem<T>>
+        extends ConfigurationItem<T> {
 
     /** The UUID of the player this configuration belongs to. May be {@code null} before it has been assigned. */
     UUID getPlayerId();

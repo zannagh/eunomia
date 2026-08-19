@@ -1,6 +1,6 @@
 package de.zannagh.eunomia.networking.examples;
 
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.PacketType;
 
 /**
  * Shared packet definitions used by the example handlers on every platform and by the gametests.

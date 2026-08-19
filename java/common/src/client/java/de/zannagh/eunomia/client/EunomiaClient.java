@@ -3,8 +3,8 @@ package de.zannagh.eunomia.client;
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.client.examples.ExampleClientHandlers;
 import de.zannagh.eunomia.client.networking.ClientConnectionEvents;
-import de.zannagh.eunomia.client.networking.McClientTransport;
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.client.networking.ClientTransportSelector;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -22,8 +22,9 @@ public final class EunomiaClient {
     }
 
     public static void init() {
-        // Install the client send path, then the example client handlers (which PING on join).
-        CommunicationManager.setClientTransport(new McClientTransport());
+        // Install the client send path (Minecraft transport by default; the selector swaps to the external
+        // relay after the probe resolves if the server lacks Eunomia and the fallback is opted in + reachable).
+        ClientTransportSelector.init();
         ExampleClientHandlers.register();
 
         // Capability handshake: probe the server on join, and if no ACK arrives, conclude it does not
@@ -34,8 +35,10 @@ public final class EunomiaClient {
             CompletableFuture.delayedExecutor(HANDSHAKE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                     .execute(CommunicationManager::markServerProbeTimedOut);
         });
-        ClientConnectionEvents.registerDisconnect(client ->
-                CommunicationManager.onClientDisconnect());
+        ClientConnectionEvents.registerDisconnect(client -> {
+            ClientTransportSelector.onDisconnect();
+            CommunicationManager.onClientDisconnect();
+        });
 
         Eunomia.LOGGER.info("Eunomia client initialized");
     }

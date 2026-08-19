@@ -3,7 +3,7 @@ package de.zannagh.eunomia.client.mixins.networking;
 
 import de.zannagh.eunomia.client.networking.ClientConnectionEvents;
 import de.zannagh.eunomia.client.networking.McClientContext;
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.payloads.EunomiaPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;

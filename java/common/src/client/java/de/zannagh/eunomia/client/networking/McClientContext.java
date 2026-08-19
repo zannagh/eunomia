@@ -1,8 +1,8 @@
 package de.zannagh.eunomia.client.networking;
 
-import de.zannagh.eunomia.networking.ClientContext;
-import de.zannagh.eunomia.networking.CommunicationManager;
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.ClientContext;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 

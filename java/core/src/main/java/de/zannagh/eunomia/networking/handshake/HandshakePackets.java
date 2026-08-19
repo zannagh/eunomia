@@ -1,6 +1,6 @@
 package de.zannagh.eunomia.networking.handshake;
 
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.PacketType;
 
 /** The built-in capability-handshake channels. Registered automatically by both sides. */
 public final class HandshakePackets {

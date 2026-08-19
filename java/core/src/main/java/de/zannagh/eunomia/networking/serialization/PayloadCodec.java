@@ -1,6 +1,6 @@
 package de.zannagh.eunomia.networking.serialization;
 
-import de.zannagh.eunomia.networking.PacketDirection;
+import de.zannagh.eunomia.networking.packets.PacketDirection;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

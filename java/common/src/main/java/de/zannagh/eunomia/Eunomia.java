@@ -1,12 +1,19 @@
 package de.zannagh.eunomia;
 
 import com.google.gson.Gson;
+import com.google.gson.annotations.SerializedName;
 import de.zannagh.eunomia.common.PackRepositoryProvider;
 import de.zannagh.eunomia.examples.ExampleServerHandlers;
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.keyed.ReplicatedStores;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.loader.LoaderNetwork;
 import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
 import de.zannagh.eunomia.serialization.JsonSerializer;
+import de.zannagh.eunomia.serialization.SerializationManager;
+import de.zannagh.eunomia.server.ServerConnectionEventConsumer;
+import de.zannagh.eunomia.server.ServerConnectionEvents;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +35,9 @@ public final class Eunomia {
     }
 
     public static void init() {
-        SERIALIZER = new JsonSerializer().GSON;
+        SerializationManager.init();
+        SERIALIZER = SerializationManager.SERIALIZER;
+
         // Install as a DEFAULT only: a consuming mod resolves payloads with its own Gson (its config type
         // adapters included) via NetworkSerializer.setGson. Using installDefaultGson here means that
         // explicit install always wins no matter which mod's init runs first - the two used to race, and
@@ -41,6 +50,14 @@ public final class Eunomia {
         ExampleServerHandlers.register();
         // Answer client capability probes so clients can detect this server runs Eunomia.
         CommunicationManager.enableServerHandshake();
+        // On join, dump every registered replicated store to the newcomer. A no-op until a mod (or the example
+        // wiring) registers a ReplicatedKeyedStore, so it is safe to install unconditionally.
+        ServerConnectionEvents.registerJoin(new ServerConnectionEventConsumer() {
+            @Override
+            public void acceptPlayerJoin(MinecraftServer server, ServerPlayer player) {
+                ReplicatedStores.pushAllTo(player.getUUID());
+            }
+        });
         LOGGER.info("Eunomia shared library loaded");
     }
 

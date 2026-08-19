@@ -1,8 +1,8 @@
 package de.zannagh.eunomia.client.networking;
 
 import de.zannagh.eunomia.Eunomia;
-import de.zannagh.eunomia.networking.ClientTransport;
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.comms.ClientTransport;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import net.minecraft.client.Minecraft;
 
 //? if >= 1.20.5 {

@@ -1,7 +1,7 @@
 package de.zannagh.eunomia.paper;
 
 import com.google.gson.Gson;
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
 import de.zannagh.eunomia.networking.examples.PermissionPayload;
 import de.zannagh.eunomia.networking.examples.PingPayload;

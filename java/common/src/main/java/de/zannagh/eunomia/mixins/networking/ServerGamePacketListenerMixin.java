@@ -1,7 +1,7 @@
 //? if >= 1.20.5 {
 package de.zannagh.eunomia.mixins.networking;
 
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.loader.McServerContext;
 import de.zannagh.eunomia.networking.payloads.EunomiaPayload;
 import net.minecraft.network.Connection;
