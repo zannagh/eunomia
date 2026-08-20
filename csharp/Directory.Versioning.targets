@@ -47,8 +47,12 @@
     </PropertyGroup>
   </Target>
 
+  <!-- SkipEunomiaGitVersion=true opts out of the git-based versioning entirely (no dotnet-gitversion,
+       no `git` invocation). Intended for container/CI builds that have no .git in the build context;
+       the caller is expected to inject the version via -p:Version=... instead. Default (unset) keeps
+       the normal GitVersion behavior. -->
   <Target Name="GlobalVersioningInit" AfterTargets="DecideVersioningBehavior"
-          Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'">
+          Condition="'$(SkipEunomiaGitVersion)' != 'true' and (!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true')">
     <Message Importance="high" Text="Running global versioning init."
              Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'" />
     <PropertyGroup>
@@ -85,7 +89,7 @@
   </Target>
 
   <Target Name="GlobalVersioning" AfterTargets="GlobalVersioningInit"
-          Condition="Exists($(GitVersionMarkerFile))">
+          Condition="'$(SkipEunomiaGitVersion)' != 'true' and Exists($(GitVersionMarkerFile))">
     <PropertyGroup>
       <GitVersionJson>$([System.IO.File]::ReadAllText($(GitVersionMarkerFile)))</GitVersionJson>
       <Version>$([System.Text.RegularExpressions.Regex]::Match($(GitVersionJson),

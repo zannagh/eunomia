@@ -16,6 +16,7 @@ namespace Eunomia.Server.Core.Storage;
 public sealed class KeyedPacketStore : IKeyedPacketStore
 {
     private readonly ConcurrentDictionary<(string Scope, string Channel), ConcurrentDictionary<string, string>> _store = new();
+    private readonly ConcurrentDictionary<(string Scope, string Channel), object> _fileLocks = new();
     private readonly ILogger<KeyedPacketStore> _logger;
     private readonly string _dataDir;
 
@@ -98,20 +99,60 @@ public sealed class KeyedPacketStore : IKeyedPacketStore
         }
     }
 
-    private void PersistChannel(string scope, string channel, ConcurrentDictionary<string, string> entries)
+    /// <summary>
+    /// Persists <paramref name="liveEntries"/> for (scope, channel) to disk. Serialized under a
+    /// per-(scope,channel) lock and written via a temp-file-then-rename swap, so concurrent Puts to
+    /// the same channel can never interleave their writes or leave a half-written file behind: the
+    /// snapshot is taken inside the lock, so whichever writer runs last always persists the freshest
+    /// state (the live dictionary is shared and every Put mutates it before calling this method).
+    /// </summary>
+    private void PersistChannel(string scope, string channel, ConcurrentDictionary<string, string> liveEntries)
+    {
+        object fileLock = _fileLocks.GetOrAdd((scope, channel), _ => new object());
+        lock (fileLock)
+        {
+            string scopeDir = Path.Combine(_dataDir, Sanitize(scope));
+            string file = Path.Combine(scopeDir, Sanitize(channel) + ".json");
+            string tempFile = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
+
+            try
+            {
+                Directory.CreateDirectory(scopeDir);
+
+                PersistedChannel persisted = new(scope, channel, new Dictionary<string, string>(liveEntries));
+                string json = JsonSerializer.Serialize(persisted, EunomiaJsonOptions.Wire);
+
+                File.WriteAllText(tempFile, json);
+                if (File.Exists(file))
+                {
+                    // Atomically swaps the temp file in for the existing one; no backup kept.
+                    File.Replace(tempFile, file, destinationBackupFileName: null);
+                }
+                else
+                {
+                    File.Move(tempFile, file);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to persist keyed packet store for {Scope}/{Channel}", scope, channel);
+                TryDeleteLeftoverTempFile(tempFile);
+            }
+        }
+    }
+
+    private void TryDeleteLeftoverTempFile(string tempFile)
     {
         try
         {
-            string scopeDir = Path.Combine(_dataDir, Sanitize(scope));
-            Directory.CreateDirectory(scopeDir);
-            string file = Path.Combine(scopeDir, Sanitize(channel) + ".json");
-            PersistedChannel persisted = new(scope, channel, new Dictionary<string, string>(entries));
-            string json = JsonSerializer.Serialize(persisted, EunomiaJsonOptions.Wire);
-            File.WriteAllText(file, json);
+            if (File.Exists(tempFile))
+            {
+                File.Delete(tempFile);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to persist keyed packet store for {Scope}/{Channel}", scope, channel);
+            _logger.LogError(ex, "Failed to clean up leftover temp file {TempFile}", tempFile);
         }
     }
 

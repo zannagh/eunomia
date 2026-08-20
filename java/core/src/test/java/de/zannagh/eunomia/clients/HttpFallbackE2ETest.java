@@ -73,6 +73,9 @@ class HttpFallbackE2ETest {
                 .redirectErrorStream(true)
                 .redirectOutput(workDir.resolve("server.log").toFile());
         builder.environment().put("EUNOMIA_DISABLE_MOJANG_GATE", "1");
+        // Isolate the server's persistence to this run's temp dir (the store otherwise writes ./data
+        // relative to the app content root, which would leak state between runs).
+        builder.environment().put("EUNOMIA_DATA_DIR", workDir.resolve("data").toString());
         server = builder.start();
 
         awaitHealth();

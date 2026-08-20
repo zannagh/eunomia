@@ -1,0 +1,99 @@
+# Build & publish the C# server (csharp/src/Eunomia.Server.Web) as a container image to GHCR.
+#
+# Trigger model:
+#   - push: main          -> automated build. Tagged `prerelease` (+ the current semver). Mirrors
+#                            publish-platforms.yml's push-to-main = automatic-prerelease convention.
+#   - release: published   -> manual GitHub release. Tagged `latest` (+ the current semver).
+#   - workflow_dispatch    -> manual run, treated the same as a release (tagged `latest` + semver).
+#
+# Tag truth table:
+#   push (main)          -> ghcr.io/<repo>/eunomia-server:prerelease, :<semver>
+#   release (published)  -> ghcr.io/<repo>/eunomia-server:latest,     :<semver>
+#   workflow_dispatch     -> ghcr.io/<repo>/eunomia-server:latest,     :<semver>
+#
+# The image is only pushed on these three events (never on pull_request - there is none here anyway).
+#
+# The Dockerfile lives at csharp/Dockerfile and expects a build context of csharp/ (see the layer-cache
+# COPY order in that file). It builds Release and bypasses Directory.Versioning.targets' GitVersion
+# invocation via -p:SkipEunomiaGitVersion=true (the Docker build context has no .git directory); the
+# computed semver is injected as the APP_VERSION build-arg and also applied as the image tag.
+
+name: Publish (Docker)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'csharp/**'
+      - '.github/workflows/docker-publish.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: eunomia-server
+
+jobs:
+  publish:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Calculate Version
+        id: version
+        uses: zannagh/versionizer/calculate-version@v1
+
+      - name: Compute image name
+        id: image
+        run: |
+          # GHCR requires lowercase repository paths; github.repository can contain uppercase.
+          IMAGE="${REGISTRY}/${{ github.repository }}/${IMAGE_NAME}"
+          echo "name=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.fullSemVer }}
+            type=raw,value=prerelease,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' || github.event_name == 'workflow_dispatch' }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: csharp
+          file: csharp/Dockerfile
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.fullSemVer }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

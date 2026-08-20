@@ -1,0 +1,79 @@
+# C# test + coverage, mirroring the Java build.yml/coverage.yml split: PR runs upload the PR's
+# coverage, and the push-to-main run fills in the Codecov baseline for the diff view.
+#
+# Uses coverlet (via `dotnet test --collect:"XPlat Code Coverage"`) with csharp/coverlet.runsettings
+# to produce a Cobertura XML report, uploaded to Codecov under the `csharp` flag (kept separate from
+# the `java` flag added to build.yml/coverage.yml - see .github/codecov.yml). This job is informational
+# only; it never fails CI on coverage.
+#
+# ubuntu-latest is used directly here (no self-hosted-runner selection) since the C# job is light
+# enough not to need the self-hosted pool the Gradle builds use.
+
+name: C# CI
+
+on:
+  pull_request:
+    paths:
+      - 'csharp/**'
+      - '.github/workflows/csharp-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'csharp/**'
+      - '.github/workflows/csharp-ci.yml'
+
+concurrency:
+  group: csharp-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: csharp/global.json
+
+      - name: Test + coverage
+        run: >
+          dotnet test csharp/Eunomia.Server.slnx
+          --collect:"XPlat Code Coverage"
+          --settings csharp/coverlet.runsettings
+
+      - name: Find coverage report
+        id: report
+        run: |
+          FILE=$(find csharp -path '*/TestResults/*/coverage.cobertura.xml' | head -n1)
+          if [[ -z "$FILE" ]]; then
+            echo "::warning::No coverage.cobertura.xml found under csharp/**/TestResults - skipping upload."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "path=$FILE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Coverage summary
+        if: steps.report.outputs.found == 'true'
+        run: |
+          # Cobertura's root <coverage line-rate="0.NNNN" ...> is a fraction of lines covered.
+          RATE=$(grep -o 'line-rate="[0-9.]*"' "${{ steps.report.outputs.path }}" | head -n1 | grep -o '[0-9.]*')
+          PCT=$(awk -v r="$RATE" 'BEGIN { printf "%.1f", r * 100 }')
+          echo "C# line coverage: ${PCT}%" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Codecov
+        if: steps.report.outputs.found == 'true'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ steps.report.outputs.path }}
+          flags: csharp
+          disable_search: true
+          fail_ci_if_error: false

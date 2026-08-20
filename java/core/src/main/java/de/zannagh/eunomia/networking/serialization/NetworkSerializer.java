@@ -1,5 +1,6 @@
 package de.zannagh.eunomia.networking.serialization;
 
+import com.google.gson.ExclusionStrategy;
 import com.google.gson.Gson;
 
 /**
@@ -48,5 +49,15 @@ public final class NetworkSerializer {
 
     public static Gson gson() {
         return gson;
+    }
+
+    /**
+     * The {@link ExclusionStrategy} that strips {@link LocalOnly}-annotated fields. Eunomia's own network Gson
+     * (built by {@code SerializationManager} and installed here via {@link #installDefaultGson}) already carries
+     * it; a consumer building its own network {@code GsonBuilder} adds it with
+     * {@code builder.setExclusionStrategies(NetworkSerializer.localOnlyExclusion())}.
+     */
+    public static ExclusionStrategy localOnlyExclusion() {
+        return new LocalOnlyExclusionStrategy();
     }
 }

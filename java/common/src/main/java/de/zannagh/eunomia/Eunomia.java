@@ -43,7 +43,10 @@ public final class Eunomia {
         // explicit install always wins no matter which mod's init runs first - the two used to race, and
         // when this bare Gson clobbered the consumer's, its typed payloads deserialized through Gson's
         // reflective adapter and failed on the consumer's custom on-wire shapes.
-        NetworkSerializer.installDefaultGson(SERIALIZER);
+        // NOTE: SerializationManager.init() above already installs its own network Gson (SERIALIZER's fields
+        // minus @LocalOnly) as the default; SERIALIZER itself is the full/local one, so re-installing it here
+        // would silently undo that stripping. Install the network Gson explicitly instead.
+        NetworkSerializer.installDefaultGson(SerializationManager.NETWORK);
         // Install the loader networking adapter (registration listener + server transport), then the
         // example server handlers so a fresh install already answers the eunomia:* example packets.
         LoaderNetwork.init();

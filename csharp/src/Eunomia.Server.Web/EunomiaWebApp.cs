@@ -47,7 +47,11 @@ public static class EunomiaWebApp
             options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
         services.AddHttpClient();
 
-        services.AddSingleton<IKeyedPacketStore, KeyedPacketStore>();
+        // Persistence directory is configurable via EUNOMIA_DATA_DIR (default "data"), so a container can
+        // mount a volume and tests can isolate their own dir. Relative paths resolve against the content root.
+        string dataDir = Environment.GetEnvironmentVariable("EUNOMIA_DATA_DIR") ?? "data";
+        services.AddSingleton<IKeyedPacketStore>(serviceProvider =>
+            new KeyedPacketStore(serviceProvider.GetRequiredService<ILogger<KeyedPacketStore>>(), dataDir));
         services.AddSingleton<ConnectionManager>();
         services.AddSingleton<WebSocketHandler>();
         services.AddSingleton<MojangProfileClient>();

@@ -93,6 +93,126 @@ public class KeyedPacketStoreTests : IDisposable
         Assert.Equal("""{"restored":true}""", snapshot.Entries["player1"]);
     }
 
+    [Fact]
+    public async Task Put_ConcurrentWritesAcrossManyKeys_PersistsAllWithoutCorruption()
+    {
+        const string scope = "stress-scope";
+        const string channel = "eunomia:stress";
+        const int writerCount = 64;
+
+        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+
+        await Task.WhenAll(Enumerable.Range(0, writerCount).Select(i => Task.Run(() =>
+        {
+            store.Put(scope, channel, $"key-{i}", ParsePayload($$"""{"index":{{i}}}"""));
+        })));
+
+        // A fresh instance reading the file back proves it's complete, valid JSON on disk - not
+        // just correct in the in-memory dictionary.
+        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
+
+        Assert.Equal(writerCount, snapshot.Entries.Count);
+        for (int i = 0; i < writerCount; i++)
+        {
+            Assert.Equal($$"""{"index":{{i}}}""", snapshot.Entries[$"key-{i}"]);
+        }
+    }
+
+    [Fact]
+    public async Task Put_ConcurrentWritesToSameKey_ReloadsWithoutCorruption()
+    {
+        const string scope = "race-scope";
+        const string channel = "eunomia:race";
+        const string key = "shared-key";
+        const int writerCount = 64;
+
+        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+
+        await Task.WhenAll(Enumerable.Range(0, writerCount).Select(i => Task.Run(() =>
+        {
+            store.Put(scope, channel, key, ParsePayload($$"""{"writer":{{i}}}"""));
+        })));
+
+        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
+
+        // Exactly one entry survives (last writer wins); it must be intact, valid JSON from one of
+        // the writers - never a truncated or interleaved fragment from a torn concurrent write.
+        string persisted = Assert.Single(snapshot.Entries).Value;
+        using JsonDocument document = JsonDocument.Parse(persisted); // throws on corruption
+        int writerIndex = document.RootElement.GetProperty("writer").GetInt32();
+        Assert.InRange(writerIndex, 0, writerCount - 1);
+    }
+
+    [Fact]
+    public async Task Put_ConcurrentWritesAcrossScopesAndChannels_AllSurviveReload()
+    {
+        string[] scopes = ["scope-alpha", "scope-beta"];
+        string[] channels = ["eunomia:chan-a", "eunomia:chan-b", "eunomia:chan-c"];
+        const int taskCount = 8;
+        const int putsPerTask = 200;
+
+        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+
+        // Every (task, i) pair gets a globally unique key, spread pseudo-randomly across every
+        // (scope, channel) combination, so we know exactly how many entries each combo must end up
+        // with once every task has finished writing.
+        var expected = new Dictionary<(string Scope, string Channel), HashSet<string>>();
+        foreach (string scope in scopes)
+        {
+            foreach (string channel in channels)
+            {
+                expected[(scope, channel)] = [];
+            }
+        }
+
+        foreach (int t in Enumerable.Range(0, taskCount))
+        {
+            foreach (int i in Enumerable.Range(0, putsPerTask))
+            {
+                string scope = scopes[(t + i) % scopes.Length];
+                string channel = channels[(t + i) % channels.Length];
+                expected[(scope, channel)].Add($"t{t}-i{i}");
+            }
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, taskCount).Select(t => Task.Run(() =>
+        {
+            for (int i = 0; i < putsPerTask; i++)
+            {
+                string scope = scopes[(t + i) % scopes.Length];
+                string channel = channels[(t + i) % channels.Length];
+                string key = $"t{t}-i{i}";
+                store.Put(scope, channel, key, ParsePayload($$"""{"task":{{t}},"i":{{i}}}"""));
+            }
+        })));
+
+        AssertMatchesExpected(store, scopes, expected);
+
+        // Fresh instance over the same dir proves every channel file on disk is complete and valid.
+        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        AssertMatchesExpected(reloaded, scopes, expected);
+    }
+
+    private static void AssertMatchesExpected(
+        KeyedPacketStore store, string[] scopes, Dictionary<(string Scope, string Channel), HashSet<string>> expected)
+    {
+        foreach (string scope in scopes)
+        {
+            IReadOnlyList<StoreSyncPayload> snapshot = store.SnapshotFor(scope);
+            foreach (StoreSyncPayload payload in snapshot)
+            {
+                HashSet<string> expectedKeys = expected[(scope, payload.Channel)];
+                Assert.Equal(expectedKeys.Count, payload.Entries.Count);
+                foreach (string key in expectedKeys)
+                {
+                    Assert.True(payload.Entries.ContainsKey(key), $"missing {scope}/{payload.Channel}/{key}");
+                }
+            }
+        }
+    }
+
     private static JsonElement ParsePayload(string json)
     {
         return JsonDocument.Parse(json).RootElement;

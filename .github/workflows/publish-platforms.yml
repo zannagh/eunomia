@@ -7,7 +7,30 @@
 #                                and per-version metadata, and attaches the jars to the GitHub release.
 #   - push: main              -> creates an automatic GitHub *prerelease* only. It does NOT publish to
 #                                the mod platforms (those are gated on is_manual_release == 'true').
+#   - push: experimental      -> same automatic GitHub *prerelease*, PLUS publishes to Modrinth/
+#                                CurseForge as a prerelease (version-type "beta"). This is the only
+#                                push branch that reaches the platform-upload jobs.
 #   - workflow_dispatch       -> dry-run / force-release knobs for testing the pipeline.
+#
+# Truth table (who publishes, and as what type):
+#
+#   Trigger                        | GitHub prerelease | GitHub full release | Modrinth/CurseForge
+#   --------------------------------+--------------------+----------------------+----------------------
+#   push -> main                    | yes                | no                   | no
+#   push -> experimental            | yes                | no                   | yes, version-type=beta
+#   release: published (manual)     | no                 | yes (jars attached)  | yes, version-type=release*
+#   workflow_dispatch               | no (should_release | no                   | no (is_manual_release
+#                                    |  gate as normal)   |                      |  is only true for a
+#                                    |                    |                      |  real release event)
+#
+#   * version-type follows needs.prepare.outputs.is_prerelease, which versionizer's determine-version
+#     resolves from the manual release's own prerelease flag - so a manual GitHub prerelease still
+#     uploads as "beta".
+#
+#   is_experimental (computed below straight from github.ref/github.event_name, not from the
+#   versionizer actions, since their internals aren't ours to change) is the only new input: it
+#   OR's into the existing is_manual_release=='true' gate on publish-modrinth/publish-curseforge so an
+#   experimental push reaches them without touching the manual-release path at all.
 #
 # Scope decisions for eunomia (differs from armor-hider):
 #   - Only the Fabric and NeoForge loader jars go to the platforms. The Paper plugin is published to
@@ -24,7 +47,7 @@ on:
   release:
     types: [published]
   push:
-    branches: [main]
+    branches: [main, experimental]
   workflow_dispatch:
     inputs:
       force_release:
@@ -64,6 +87,7 @@ jobs:
       runner: ${{ steps.prep.outputs.runner }}
       should_release: ${{ steps.prep.outputs.should_release }}
       is_manual_release: ${{ steps.prep.outputs.is_manual_release }}
+      is_experimental: ${{ steps.experimental.outputs.value }}
       skip_reason: ${{ steps.prep.outputs.skip_reason }}
       semver: ${{ steps.prep.outputs.semver }}
       prerelease_number: ${{ steps.prep.outputs.prerelease_number }}
@@ -96,6 +120,20 @@ jobs:
           runner-token: ${{ secrets.RUNNER_TOKEN }}
           modrinth-project-id: ${{ env.MODRINTH_PROJECT_ID }}
           repository: ${{ github.repository }}
+
+      # Computed directly from the trigger, not from the versionizer actions (their internals aren't
+      # ours to change): true only for a push landing on refs/heads/experimental. This is the flag that
+      # lets publish-modrinth/publish-curseforge run for experimental pushes without touching the
+      # existing is_manual_release-gated manual-release path.
+      - name: Detect experimental push
+        id: experimental
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/experimental" ]]; then
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     name: Build
@@ -155,7 +193,7 @@ jobs:
           if-no-files-found: error
 
   # ============================================================================
-  # CREATE GITHUB PRERELEASE (automatic, on push to main)
+  # CREATE GITHUB PRERELEASE (automatic, on push to main or experimental)
   # ============================================================================
   create-prerelease:
     name: Create GitHub Prerelease
@@ -209,9 +247,12 @@ jobs:
     name: Publish to Modrinth
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    # Runs for a manual release OR a push to experimental (see the truth table at the top of this
+    # file). version_ok defaults to 'true' when the downgrade check didn't run (i.e. not a manual
+    # release), so it's a no-op guard on the experimental path.
     if: |
       needs.prepare.outputs.should_release == 'true' &&
-      needs.prepare.outputs.is_manual_release == 'true' &&
+      (needs.prepare.outputs.is_manual_release == 'true' || needs.prepare.outputs.is_experimental == 'true') &&
       needs.prepare.outputs.version_ok == 'true' &&
       needs.prepare.outputs.version_exists != 'true'
     strategy:
@@ -278,9 +319,12 @@ jobs:
     name: Publish to CurseForge
     needs: [prepare, build]
     runs-on: ubuntu-latest
+    # Runs for a manual release OR a push to experimental (see the truth table at the top of this
+    # file). version_ok defaults to 'true' when the downgrade check didn't run (i.e. not a manual
+    # release), so it's a no-op guard on the experimental path.
     if: |
       needs.prepare.outputs.should_release == 'true' &&
-      needs.prepare.outputs.is_manual_release == 'true' &&
+      (needs.prepare.outputs.is_manual_release == 'true' || needs.prepare.outputs.is_experimental == 'true') &&
       needs.prepare.outputs.version_ok == 'true'
     strategy:
       fail-fast: false

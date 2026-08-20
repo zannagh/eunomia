@@ -9,7 +9,8 @@ import de.zannagh.eunomia.configuration.EunomiaConfig;
 import de.zannagh.eunomia.configuration.FileConfigurationProvider;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
-import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
+import de.zannagh.eunomia.serialization.SerializationManager;
+import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 
 import java.nio.file.Path;
@@ -99,9 +100,12 @@ public final class ClientTransportSelector {
         if (configProvider == null) {
             synchronized (ClientTransportSelector.class) {
                 if (configProvider == null) {
+                    // The LOCAL Gson, not NetworkSerializer.gson() - the latter now strips @LocalOnly fields for
+                    // the wire, which would drop them from the saved file too were it used here.
+                    Gson localGson = SerializationManager.SERIALIZER != null ? SerializationManager.SERIALIZER : new Gson();
                     configProvider = new FileConfigurationProvider<>(
                             Path.of("config", "eunomia-client.json"),
-                            EunomiaConfig.class, EunomiaConfig::new, NetworkSerializer.gson(), Eunomia.LOGGER);
+                            EunomiaConfig.class, EunomiaConfig::new, localGson, Eunomia.LOGGER);
                 }
             }
         }

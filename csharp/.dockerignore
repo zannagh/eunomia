@@ -4,6 +4,7 @@
 **/.vs/
 **/.idea/
 **/logs/
+**/TestResults/
 docker/pgdata/
 docker/eunomia.server.tar.gz
 test/
