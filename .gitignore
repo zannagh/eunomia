@@ -84,6 +84,9 @@ deploy/
 **/testSettings.json
 **/TestFiles/**
 
+# Eunomia .NET server runtime store (KeyedPacketStore JSON persistence)
+csharp/**/data/
+
 .DS_Store
 
 # User-specific files
@@ -500,4 +503,12 @@ FodyWeavers.xsd
 *.msm
 *.msp
 dotnet-install.sh
+
+# Agent tooling session directories (not project source)
+.nodeterm/
+.serena/
+
+# Keep the .NET server's base config tracked; secrets/local overrides live in
+# appsettings.Development.json, which stays ignored by the rule above.
+!csharp/src/Eunomia.Server.Web/appsettings.json
 

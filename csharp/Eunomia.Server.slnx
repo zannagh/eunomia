@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="..\GitVersion.yml" />
+    <File Path="..\README.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="Directory.Versioning.targets" />
+      <File Path="..\.gitignore" />
+  </Folder>
+  <Project Path="src/Eunomia.Server.Api/Eunomia.Server.Api.csproj" />
+  <Project Path="src/Eunomia.Server.Core/Eunomia.Server.Core.csproj" />
+  <Project Path="src/Eunomia.Server.Tests/Eunomia.Server.Tests.csproj" />
+  <Project Path="src/Eunomia.Server.Web/Eunomia.Server.Web.csproj" />
+</Solution>
