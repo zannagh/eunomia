@@ -4,16 +4,11 @@ import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.clients.ExternalClientTransport;
 import de.zannagh.eunomia.clients.ExternalServerClient;
 import de.zannagh.eunomia.clients.PingClient;
-import de.zannagh.eunomia.configuration.ConfigurationProvider;
 import de.zannagh.eunomia.configuration.EunomiaConfig;
-import de.zannagh.eunomia.configuration.FileConfigurationProvider;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
-import de.zannagh.eunomia.serialization.SerializationManager;
-import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 
-import java.nio.file.Path;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -27,8 +22,6 @@ import java.util.concurrent.CompletableFuture;
 public final class ClientTransportSelector {
 
     private static final McClientTransport MC = new McClientTransport();
-
-    private static volatile ConfigurationProvider<EunomiaConfig> configProvider;
 
     private static volatile ExternalServerClient external;
 
@@ -48,14 +41,14 @@ public final class ClientTransportSelector {
             useMinecraftTransport();
             return;
         }
-        EunomiaConfig config = config();
+        EunomiaConfig config = Eunomia.getConfig();
         if (!config.externalFallbackEnabled() || !config.hasExternalServerAddress()) {
             useMinecraftTransport();
             return;
         }
         String scope = LocalClientIdentity.currentServerScope(client);
-        UUID playerId = LocalClientIdentity.localPlayerId(client);
-        if (scope == null || playerId == null) {
+        var playerId = LocalClientIdentity.localPlayerId(client);
+        if (scope == null) {
             useMinecraftTransport();
             return;
         }
@@ -94,21 +87,5 @@ public final class ClientTransportSelector {
     /** Restores the Minecraft transport and closes any relay connection. Call on client disconnect. */
     public static void onDisconnect() {
         useMinecraftTransport();
-    }
-
-    private static EunomiaConfig config() {
-        if (configProvider == null) {
-            synchronized (ClientTransportSelector.class) {
-                if (configProvider == null) {
-                    // The LOCAL Gson, not NetworkSerializer.gson() - the latter now strips @LocalOnly fields for
-                    // the wire, which would drop them from the saved file too were it used here.
-                    Gson localGson = SerializationManager.SERIALIZER != null ? SerializationManager.SERIALIZER : new Gson();
-                    configProvider = new FileConfigurationProvider<>(
-                            Path.of("config", "eunomia-client.json"),
-                            EunomiaConfig.class, EunomiaConfig::new, localGson, Eunomia.LOGGER);
-                }
-            }
-        }
-        return configProvider.getValue();
     }
 }

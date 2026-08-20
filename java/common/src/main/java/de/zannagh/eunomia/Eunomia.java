@@ -1,14 +1,15 @@
 package de.zannagh.eunomia;
 
 import com.google.gson.Gson;
-import com.google.gson.annotations.SerializedName;
 import de.zannagh.eunomia.common.PackRepositoryProvider;
+import de.zannagh.eunomia.configuration.ConfigurationProvider;
+import de.zannagh.eunomia.configuration.EunomiaConfig;
+import de.zannagh.eunomia.configuration.FileConfigurationProvider;
 import de.zannagh.eunomia.examples.ExampleServerHandlers;
 import de.zannagh.eunomia.keyed.ReplicatedStores;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.loader.LoaderNetwork;
 import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
-import de.zannagh.eunomia.serialization.JsonSerializer;
 import de.zannagh.eunomia.serialization.SerializationManager;
 import de.zannagh.eunomia.server.ServerConnectionEventConsumer;
 import de.zannagh.eunomia.server.ServerConnectionEvents;
@@ -17,6 +18,7 @@ import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.HashSet;
 
 /**
@@ -31,7 +33,33 @@ public final class Eunomia {
     public static final Logger LOGGER = LoggerFactory.getLogger("Eunomia");
     public static Gson SERIALIZER;
 
+    /**
+     * Provides centralized access to the configuration system for the Eunomia mod, specifically
+     * managing instances of {@link EunomiaConfig}. This static variable acts as the global configuration
+     * provider for Eunomia, allowing loading, updating, saving, and retrieving the mod's configuration.
+     *
+     * <ul>
+     *   <li>Supports defining and persisting both default and customized configurations.</li>
+     *   <li>Utilizes the {@link ConfigurationProvider} interface to abstract various storage and
+     *       retrieval mechanisms for the configuration.</li>
+     *   <li>Ensures configuration changes are modular and encapsulated within the EunomiaConfig
+     *       implementation.</li>
+     * </ul>
+     *
+     * The {@link EunomiaConfig} managed by this provider includes key options related to the external
+     * fallback behavior, such as toggling external relay support and specifying relay addresses.
+     */
+    public static ConfigurationProvider<EunomiaConfig> CONFIG_PROVIDER;
+
     private Eunomia() {
+        Gson localGson = SerializationManager.SERIALIZER != null ? SerializationManager.SERIALIZER : new Gson();
+        CONFIG_PROVIDER = new FileConfigurationProvider<>(
+                Path.of("config", "eunomia-client.json"),
+                EunomiaConfig.class, EunomiaConfig::new, localGson, Eunomia.LOGGER);
+    }
+
+    public static EunomiaConfig getConfig() {
+        return CONFIG_PROVIDER.getValue();
     }
 
     public static void init() {
