@@ -1,0 +1,98 @@
+<Project>
+    <Import Project="$(MSBuildThisFileDirectory)Directory.Versioning.targets"
+            Condition="Exists('$(MSBuildThisFileDirectory)Directory.Versioning.targets')" />
+
+    <PropertyGroup>
+        <Authors>Zannagh</Authors>
+        <Company>Zannagh</Company>
+        <Copyright>Copyright © 2026 Zannagh</Copyright>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
+        <!-- Possibility to build outside Windows -->
+        <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
+        <!-- Some guys still use .NET 10.0.1xx on Linux/Mac which had incomplete prune package data -->
+        <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AdditionalFiles Include="$(MSBuildThisFileDirectory).stylecop.json" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="'$(Configuration)'=='Release'">
+        <DebugSymbols>False</DebugSymbols>
+        <DebugType>None</DebugType>
+        <PublishReferencesDocumentationFiles>False</PublishReferencesDocumentationFiles>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <SatelliteResourceLanguages>en-US;en</SatelliteResourceLanguages>
+    </PropertyGroup>
+
+    <Target Name="Echo build versions" AfterTargets="Build">
+        <Message Importance="high"
+                 Text="Project $(ProjectName) built with file version $(FileVersion) and version $(Version)" />
+    </Target>
+
+    <!-- Ignore package source mapping warning as we do not want nuget.config files within the
+    repositories. -->
+    <PropertyGroup>
+        <NoWarn>$(NoWarn);NU1507;NU5118;CS8032;SA1633;SA1402;SA1649;SA1201;SA1204;SA1117</NoWarn>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+        <RestoreProjectStyle>PackageReference</RestoreProjectStyle>
+        <PublishRepositoryUrl>false</PublishRepositoryUrl>
+        <IncludeSymbols>false</IncludeSymbols>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Serilog" />
+        <PackageReference Include="Serilog.Sinks.File" />
+        <PackageReference Include="Serilog.Sinks.Console" />
+        <PackageReference Include="JetBrains.Annotations">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="Stylecop.Analyzers">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    </ItemGroup>
+
+  <ItemGroup Condition="$(ProjectName.EndsWith('Web')) OR $(ProjectName.EndsWith('Api'))">
+    <PackageReference Include="Serilog.AspNetCore" />
+    <!-- Routes all Serilog output (incl. ILogger routed through Serilog) to the OTLP collector. -->
+    <PackageReference Include="Serilog.Sinks.OpenTelemetry" />
+    <!-- Serves a Prometheus /metrics scrape endpoint so metrics are readable over HTTP. -->
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" />
+  </ItemGroup>
+
+    <!-- Testing packages -->
+    <ItemGroup Label="Unit Test Packages" Condition="$(ProjectName.EndsWith('Tests'))">
+        <PackageReference Include="coverlet.collector" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+        <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" />
+        <PackageReference Include="NSubstitute" />
+        <PackageReference Include="SkiaSharp" />
+        <PackageReference Include="xunit" />
+        <PackageReference Include="xunit.analyzers" />
+        <PackageReference Include="xunit.runner.console" />
+        <PackageReference Include="xunit.runner.visualstudio" />
+        <PackageReference Include="Xunit.SkippableFact" />
+        <Using Include="Xunit" />
+    </ItemGroup>
+</Project>

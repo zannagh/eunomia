@@ -1,7 +1,7 @@
 //? if >= 1.20.5 {
 package de.zannagh.eunomia.networking.payloads;
 
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.serialization.PayloadCodec;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;

@@ -68,6 +68,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: java/build/reports/jacoco/aggregate/jacocoAggregate.xml
+          flags: java
           disable_search: true
           fail_ci_if_error: false
 

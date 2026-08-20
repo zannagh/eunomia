@@ -1,6 +1,6 @@
 package de.zannagh.eunomia.networking.examples;
 
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 
 /**
  * The transport-agnostic half of the example wiring. The PING → PONG handler touches nothing

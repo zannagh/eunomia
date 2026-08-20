@@ -1,25 +1,16 @@
 package de.zannagh.eunomia.configuration;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-import de.zannagh.eunomia.networking.CommunicationManager;
-import de.zannagh.eunomia.networking.PacketType;
-import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import de.zannagh.eunomia.keyed.KeyPath;
+import de.zannagh.eunomia.keyed.KeyedStore;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
+import de.zannagh.eunomia.networking.packets.PacketType;
 
-import java.io.IOException;
-import java.lang.reflect.Type;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 /**
@@ -27,52 +18,42 @@ import java.util.function.Function;
  * replacement for a mod hand-rolling its own {@code HashMap<UUID, PlayerConfig>} plus the ad-hoc name-based
  * mirror Armor Hider carried. Lookups are UUID-only; there is deliberately no name index.
  * <p>
- * The store never hands back {@code null} for a known-good query: {@link #getOrCreate} and {@link #getOrDefault}
- * fall back to the configured default factory, and both {@link #put} and healing on load reconcile every entry's
- * own {@link PlayerLinkedConfigurationItem#getPlayerId() player id} with the map key it lives under (the key is
- * authoritative, since server-side the key is the authenticated sender). JSON round-trips through the eunomia
- * {@link Gson} so the exact same config type adapters that serialize a payload on the wire also persist it here.
+ * This is the canonical single-segment specialization of the generic {@link KeyedStore}: the player id is a
+ * one-segment {@link KeyPath}, so the store inherits all of the persistence, tree and snapshot machinery and
+ * only adds the UUID-typed convenience surface. The store never hands back {@code null} for a known-good query
+ * ({@link #getOrCreate}/{@link #getOrDefault} fall back to the configured default factory), and {@link #beforeStore}
+ * reconciles every entry's own {@link PlayerLinkedConfigurationItem#getPlayerId() player id} with the key it lives
+ * under - the key is authoritative, since server-side it is the authenticated sender - after applying any pending
+ * schema migration. The on-disk shape is a single object of {@code playerId -> config}.
  *
  * @param <C> the player-linked config type stored per player
  * @since 0.1.0
  */
-public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigurationItem<C>> {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger("eunomia-config");
-
-    private final Map<UUID, C> configs = new ConcurrentHashMap<>();
-
-    private final Class<C> configClass;
-
-    private final Function<UUID, C> defaultFactory;
-
-    private final Gson gson;
+public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigurationItem<C>> extends KeyedStore<C> {
 
     /**
-     * @param configClass    the concrete config type; needed to reconstruct the {@code Map<UUID, C>} from JSON,
-     *                       where {@code C} would otherwise be erased.
-     * @param defaultFactory builds a fresh default config for a player id; must return a non-null instance whose
-     *                       {@code getPlayerId()} is the supplied id (the store re-stamps it defensively anyway).
+     * @param configClass    the concrete config type; needed to reconstruct configs from JSON where {@code C}
+     *                       would otherwise be erased.
+     * @param defaultFactory builds a fresh default config for a player id; must return a non-null instance (the
+     *                       store re-stamps its id defensively anyway).
      */
     public ServerSidePlayerConfigStorage(Class<C> configClass, Function<UUID, C> defaultFactory) {
         this(configClass, defaultFactory, null);
     }
 
     /**
-     * @param gson the {@link Gson} used for persistence; when {@code null}, the shared
-     *             {@link NetworkSerializer#gson()} is resolved lazily at each (de)serialization so a store built
-     *             before the loader installs its enriched Gson still works.
+     * @param gson the {@link Gson} used for persistence; when {@code null}, the shared network Gson is resolved
+     *             lazily at each (de)serialization so a store built before the loader installs its enriched Gson
+     *             still works.
      */
     public ServerSidePlayerConfigStorage(Class<C> configClass, Function<UUID, C> defaultFactory, Gson gson) {
-        this.configClass = configClass;
-        this.defaultFactory = defaultFactory;
-        this.gson = gson;
+        super(1, configClass, key -> defaultFactory.apply(playerId(key)), gson);
     }
 
     /**
      * Registers a server-side receiver so that whenever a client sends {@code type}, the payload is stored under
-     * the authenticated sender id. This is the one-call wiring a consumer mod needs: declare a packet, hand it to
-     * the store, done. Returns {@code this} for chaining.
+     * the authenticated sender id (not any id the client serialized into the payload). This is the one-call wiring
+     * a consumer mod needs: declare a packet, hand it to the store, done. Returns {@code this} for chaining.
      */
     public ServerSidePlayerConfigStorage<C> handleOn(PacketType<C> type) {
         CommunicationManager.onServerReceive(type, (payload, context) -> put(context.senderId(), payload));
@@ -81,12 +62,12 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
 
     /** The stored config for {@code playerId}, if any. Never creates one. */
     public Optional<C> get(UUID playerId) {
-        return Optional.ofNullable(configs.get(playerId));
+        return get(key(playerId));
     }
 
     /** Whether a config is stored for {@code playerId}. */
     public boolean contains(UUID playerId) {
-        return configs.containsKey(playerId);
+        return contains(key(playerId));
     }
 
     /**
@@ -94,7 +75,7 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
      * the read-modify-write path where the caller intends to keep the result.
      */
     public C getOrCreate(UUID playerId) {
-        return configs.computeIfAbsent(playerId, this::newDefault);
+        return getOrCreate(key(playerId));
     }
 
     /**
@@ -102,125 +83,45 @@ public final class ServerSidePlayerConfigStorage<C extends PlayerLinkedConfigura
      * for callers that just need a value to render/compare and must not mutate the store.
      */
     public C getOrDefault(UUID playerId) {
-        C existing = configs.get(playerId);
-        return existing != null ? existing : newDefault(playerId);
+        return getOrDefault(key(playerId));
     }
 
     /**
-     * Stores {@code config} for {@code playerId}, re-stamping the config's own player id to match the key. Any
-     * pending schema migration is applied first. Returns the stored instance (which may differ from the argument
-     * if a migration produced a new instance).
+     * Stores {@code config} for {@code playerId}, re-stamping the config's own player id to match the key and
+     * applying any pending schema migration first. Returns the stored instance (which may differ from the argument
+     * if a migration produced a new one).
      */
     public C put(UUID playerId, C config) {
         if (playerId == null || config == null) {
             throw new IllegalArgumentException("playerId and config must be non-null");
         }
-        C stored = config.ensureSchemaFrom(config);
-        stored.setPlayerId(playerId);
-        configs.put(playerId, stored);
-        return stored;
+        return put(key(playerId), config);
     }
 
     /** Removes and returns the config for {@code playerId}, if one was stored. */
     public Optional<C> remove(UUID playerId) {
-        return Optional.ofNullable(configs.remove(playerId));
+        return remove(key(playerId));
     }
 
     /** An immutable snapshot of the whole store, keyed by player id. */
-    public Map<UUID, C> snapshot() {
-        return Map.copyOf(configs);
+    public Map<UUID, C> byPlayer() {
+        Map<UUID, C> out = new LinkedHashMap<>();
+        snapshot().forEach((path, config) -> out.put(playerId(path), config));
+        return out;
     }
 
-    /** An immutable snapshot of the stored configs. */
-    public Collection<C> values() {
-        return List.copyOf(configs.values());
+    @Override
+    protected C beforeStore(KeyPath key, C config) {
+        C stored = config.ensureSchemaFrom(config);
+        stored.setPlayerId(playerId(key));
+        return stored;
     }
 
-    public int size() {
-        return configs.size();
+    private static KeyPath key(UUID playerId) {
+        return KeyPath.of(Objects.requireNonNull(playerId, "playerId"));
     }
 
-    public boolean isEmpty() {
-        return configs.isEmpty();
-    }
-
-    public void clear() {
-        configs.clear();
-    }
-
-    // --- persistence -------------------------------------------------------------------------------------
-
-    /** Serializes the whole store to JSON: a single object of {@code playerId -> config}. */
-    public String toJson() {
-        return serializer().toJson(new HashMap<>(configs), mapType());
-    }
-
-    /**
-     * Replaces the store's contents with the entries parsed from {@code json}, healing each along the way
-     * (dropping null entries, reconciling id with key, applying migrations). A blank/null input clears the store.
-     */
-    public void applyJson(String json) {
-        clear();
-        if (json == null || json.isBlank()) {
-            return;
-        }
-        Map<UUID, C> loaded = serializer().fromJson(json, mapType());
-        if (loaded == null) {
-            return;
-        }
-        loaded.forEach((key, config) -> {
-            if (key != null && config != null) {
-                put(key, config);
-            }
-        });
-    }
-
-    /**
-     * Loads the store from {@code file}, or leaves it empty if the file does not exist. IO/parse failures are
-     * logged and swallowed so a corrupt file can never take down the server on start - the store simply comes up
-     * empty and repopulates as clients reconnect.
-     */
-    public void loadFrom(Path file) {
-        try {
-            if (Files.exists(file)) {
-                applyJson(Files.readString(file, StandardCharsets.UTF_8));
-            }
-        } catch (IOException | RuntimeException e) {
-            LOGGER.error("Failed to load player config store from {}; starting empty.", file, e);
-        }
-    }
-
-    /** Writes the store to {@code file}, creating parent directories as needed. */
-    public void saveTo(Path file) {
-        try {
-            if (file.getParent() != null) {
-                Files.createDirectories(file.getParent());
-            }
-            Files.writeString(file, toJson(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            LOGGER.error("Failed to save player config store to {}.", file, e);
-        }
-    }
-
-    private C newDefault(UUID playerId) {
-        C fresh = defaultFactory.apply(playerId);
-        if (fresh == null) {
-            throw new IllegalStateException("Default factory returned null for player " + playerId);
-        }
-        fresh.setPlayerId(playerId);
-        return fresh;
-    }
-
-    private Type mapType() {
-        return TypeToken.getParameterized(HashMap.class, UUID.class, configClass).getType();
-    }
-
-    private Gson serializer() {
-        Gson resolved = gson != null ? gson : NetworkSerializer.gson();
-        if (resolved == null) {
-            throw new IllegalStateException(
-                    "No Gson available for ServerSidePlayerConfigStorage; pass one to the constructor or install one via NetworkSerializer.setGson(...) first.");
-        }
-        return resolved;
+    private static UUID playerId(KeyPath key) {
+        return UUID.fromString(key.segment(0));
     }
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- The test assembly itself carries no product logic; excluding it keeps the report
+               focused on Core/Api/Web. -->
+          <Exclude>[Eunomia.Server.Tests]*</Exclude>
+          <ExcludeByFile>**/obj/**/*.cs,**/*.g.cs,**/*.g.i.cs,**/GlobalUsings.g.cs</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

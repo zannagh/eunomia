@@ -1,7 +1,12 @@
 package de.zannagh.eunomia.networking;
 
 import com.google.gson.Gson;
+import de.zannagh.eunomia.networking.comms.ClientTransport;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.HandshakePackets;
+import de.zannagh.eunomia.networking.packets.ClientContext;
+import de.zannagh.eunomia.networking.packets.PacketType;
+import de.zannagh.eunomia.networking.packets.ServerContext;
 import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
 import de.zannagh.eunomia.networking.serialization.PayloadCodec;
 import org.junit.jupiter.api.AfterEach;

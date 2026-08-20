@@ -1,6 +1,6 @@
 package de.zannagh.eunomia.networking.handshake;
 
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.packets.PacketType;
 
 import java.util.Collection;
 import java.util.Set;

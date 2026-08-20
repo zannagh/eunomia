@@ -1,0 +1,96 @@
+// Copyright (c) 2026, zannagh. All rights reserved.
+// See License in the project root for license information.
+
+using System.ComponentModel;
+using System.Text.Json;
+using Eunomia.Server.Api.Models;
+using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Serialization;
+using Eunomia.Server.Core.Storage;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Eunomia.Server.Api.Controllers;
+
+/// <summary>
+/// Accepts plain and keyed packet notifications from a client's REST fallback transport and
+/// relays them to the rest of that client's scope over websocket. Requires the sender to already
+/// hold a live websocket session for the target scope, so REST puts cannot be spoofed by an
+/// identity that has never connected.
+/// </summary>
+[ApiController]
+[Route("api/packets")]
+[AllowAnonymous]
+[Produces("application/json")]
+public class PacketController : ControllerBase
+{
+    private const long MaxBodyBytes = 1024 * 1024;
+
+    private readonly ConnectionManager _connectionManager;
+    private readonly IKeyedPacketStore _store;
+
+    public PacketController(ConnectionManager connectionManager, IKeyedPacketStore store)
+    {
+        _connectionManager = connectionManager;
+        _store = store;
+    }
+
+    [HttpPut("plain")]
+    public async Task<IActionResult> NotificationAsync([FromBody] PacketEnvelope env)
+    {
+        IActionResult? gate = ValidateRequest(env, out Guid sender);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        string frame = JsonSerializer.Serialize(WsFrame<PacketEnvelope>.Envelope(env), EunomiaJsonOptions.Wire);
+        await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
+        return Ok();
+    }
+
+    [HttpPut("keyed")]
+    [Description("A keyed notification that gets stored by the server.")]
+    public async Task<IActionResult> KeyedNotificationAsync([FromBody] PacketEnvelope env)
+    {
+        IActionResult? gate = ValidateRequest(env, out Guid sender);
+        if (gate is not null)
+        {
+            return gate;
+        }
+
+        if (env.Key is null)
+        {
+            return BadRequest("Keyed notifications require a non-null key.");
+        }
+
+        _store.Put(env.Scope, env.Channel, env.Key, env.Payload);
+
+        string frame = JsonSerializer.Serialize(WsFrame<PacketEnvelope>.Envelope(env), EunomiaJsonOptions.Wire);
+        await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
+        return Ok();
+    }
+
+    private IActionResult? ValidateRequest(PacketEnvelope env, out Guid sender)
+    {
+        sender = Guid.Empty;
+
+        if (Request.ContentLength is > MaxBodyBytes)
+        {
+            return StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        if (!Guid.TryParse(env.Sender, out sender))
+        {
+            return BadRequest("Sender must be a valid UUID.");
+        }
+
+        if (!_connectionManager.IsConnected(env.Scope, sender))
+        {
+            return Conflict("No live websocket session for this identity/scope.");
+        }
+
+        return null;
+    }
+}

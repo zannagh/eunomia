@@ -15,6 +15,19 @@ comment:
   layout: "reach, diff, flags, files"
   require_changes: false
 
+# Separate the Java (JaCoCo) and C# (coverlet/Cobertura) coverage so each reports its own % instead of
+# being blended into one number. carryforward keeps a flag's last known coverage on runs that don't
+# touch its paths (e.g. a C#-only PR still shows the java flag from its last java-covering run).
+flags:
+  java:
+    carryforward: true
+    paths:
+      - "java/**"
+  csharp:
+    carryforward: true
+    paths:
+      - "csharp/**"
+
 # Belt-and-braces: these never reach the JaCoCo XML anyway, but make the intent explicit for Codecov.
 ignore:
   - "**/mixins/**"

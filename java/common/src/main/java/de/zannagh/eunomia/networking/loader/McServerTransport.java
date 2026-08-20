@@ -1,7 +1,7 @@
 package de.zannagh.eunomia.networking.loader;
 
-import de.zannagh.eunomia.networking.PacketType;
-import de.zannagh.eunomia.networking.ServerTransport;
+import de.zannagh.eunomia.networking.packets.PacketType;
+import de.zannagh.eunomia.networking.comms.ServerTransport;
 import de.zannagh.eunomia.server.ServerHolder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;

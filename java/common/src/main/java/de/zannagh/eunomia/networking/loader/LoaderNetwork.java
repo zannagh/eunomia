@@ -1,7 +1,7 @@
 package de.zannagh.eunomia.networking.loader;
 
-import de.zannagh.eunomia.networking.CommunicationManager;
-import de.zannagh.eunomia.networking.PacketType;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
+import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.server.ServerConnectionEventConsumer;
 import de.zannagh.eunomia.server.ServerHolder;
 import de.zannagh.eunomia.server.ServerLifecycleEvents;
@@ -19,8 +19,8 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 //?}
 //? if < 1.20.5 {
-/*import de.zannagh.eunomia.networking.ServerContext;
-import de.zannagh.eunomia.networking.ClientContext;
+/*import de.zannagh.eunomia.networking.packets.ServerContext;
+import de.zannagh.eunomia.networking.packets.ClientContext;
 import de.zannagh.eunomia.networking.serialization.PayloadCodec;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.Identifier;

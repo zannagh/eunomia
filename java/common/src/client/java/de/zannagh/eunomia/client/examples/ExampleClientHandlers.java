@@ -2,8 +2,9 @@ package de.zannagh.eunomia.client.examples;
 
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.client.networking.ClientConnectionEvents;
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
+import de.zannagh.eunomia.networking.examples.ExampleReplication;
 import de.zannagh.eunomia.networking.examples.PingPayload;
 
 /**
@@ -23,6 +24,9 @@ public final class ExampleClientHandlers {
     }
 
     public static void register() {
+        // Mirror the replicated example store: snapshot on join + per-entry relays keep it in sync.
+        ExampleReplication.enableClient();
+
         CommunicationManager.onClientReceive(ExamplePackets.PONG, (pong, context) -> {
             lastPongMessage = pong.message;
             lastPongServerTime = pong.serverTimeMillis;

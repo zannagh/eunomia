@@ -3,7 +3,7 @@
 
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.client.examples.ExampleClientHandlers;
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;

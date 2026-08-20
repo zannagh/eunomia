@@ -1,8 +1,9 @@
 package de.zannagh.eunomia.examples;
 
-import de.zannagh.eunomia.networking.CommunicationManager;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.examples.ExampleHandlers;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
+import de.zannagh.eunomia.networking.examples.ExampleReplication;
 import de.zannagh.eunomia.networking.examples.PermissionPayload;
 import de.zannagh.eunomia.server.ServerConnectionEventConsumer;
 import de.zannagh.eunomia.server.ServerConnectionEvents;
@@ -24,6 +25,9 @@ public final class ExampleServerHandlers {
     public static void register() {
         // Answer a PING with a PONG - the exact same call the Paper plugin makes.
         ExampleHandlers.registerPingPong();
+
+        // A replicated store keyed by player UUID: stored server-side, relayed to others, dumped to newcomers.
+        ExampleReplication.enableServer();
 
         // On join, tell the client its permission level (mirrors the classic Armor Hider handshake).
         ServerConnectionEvents.registerJoin(new ServerConnectionEventConsumer() {
