@@ -92,6 +92,10 @@ public static class AuthenticationServices
             {
                 options.LoginPath = "/account/login";
                 options.LogoutPath = "/account/logout";
+                // Authenticated-but-under-privileged users are forbidden by the authorization
+                // middleware on the initial SSR request; send them to the Blazor 403 page instead of
+                // the framework default (/Account/AccessDenied), which has no handler and 404s.
+                options.AccessDeniedPath = "/account/access-denied";
                 options.SlidingExpiration = true;
                 options.ExpireTimeSpan = TimeSpan.FromHours(8);
             });

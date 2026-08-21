@@ -91,14 +91,27 @@ h2 {
     width: 18px;
     height: 18px;
     border-radius: 4px;
-    background: var(--accent);
-    box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.18);
+    /* The Eunomia logo, contained so it stays crisp at both the 18px header and 34px -lg sizes. */
+    background: url("/logo.png") center / contain no-repeat;
 }
 
 .eu-brand-mark-lg {
     width: 34px;
     height: 34px;
     border-radius: 8px;
+}
+
+.eu-brand-version {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.05rem 0.4rem;
+    letter-spacing: 0.02em;
+    align-self: center;
 }
 
 .eu-nav {

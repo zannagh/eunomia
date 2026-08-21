@@ -1,10 +1,12 @@
 @inherits LayoutComponentBase
+@using System.Reflection
 
 <div class="eu-shell">
     <header class="eu-topbar">
         <a href="/dashboard" class="eu-brand">
             <span class="eu-brand-mark"></span>
             <span class="eu-brand-text">Eunomia</span>
+            <span class="eu-brand-version" title="Running application version">v@(Version)</span>
         </a>
         <nav class="eu-nav">
             <AuthorizeView Policy="@AuthorizationPolicies.StaffOnly">
@@ -29,3 +31,22 @@
         @Body
     </main>
 </div>
+
+@code {
+    // The build version stamped into the assembly by GitVersion (see Directory.Versioning.targets),
+    // matching the pushed image tag. Any "+<sha>" build-metadata suffix is trimmed for display.
+    private static readonly string Version = ResolveVersion();
+
+    private static string ResolveVersion()
+    {
+        string? info = typeof(MainLayout).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (string.IsNullOrWhiteSpace(info))
+        {
+            return "dev";
+        }
+
+        int plus = info.IndexOf('+');
+        return plus > 0 ? info[..plus] : info;
+    }
+}

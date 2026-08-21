@@ -1,5 +1,12 @@
 @* Shown when a user IS authenticated but lacks the role for the requested page. Distinct from the
-   login redirect (RedirectToLogin), which is only for unauthenticated visitors. *@
+   login redirect (RedirectToLogin), which is only for unauthenticated visitors.
+
+   Used two ways: (1) rendered inline by Routes.razor's NotAuthorized for in-circuit navigations, and
+   (2) routed to at /account/access-denied — the cookie handler's AccessDeniedPath (see
+   AuthenticationServices) — for the initial SSR request the authorization middleware forbids. The
+   @page + @layout below only take effect for (2); when rendered inline they are ignored. *@
+@page "/account/access-denied"
+@layout EmptyLayout
 
 <PageTitle>Access denied - Eunomia</PageTitle>
 

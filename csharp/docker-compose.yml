@@ -3,13 +3,18 @@
 # Passwords here are dev placeholders only - override POSTGRES__PASSWORD (and the postgres
 # POSTGRES_PASSWORD) with real secrets via a gitignored .env or your deployment's secret store
 # before exposing this anywhere. Bring it up from the csharp/ directory: `docker compose up -d`.
+#
+# Secrets for the `eunomia` service are passed through from the environment of whoever runs
+# `docker compose` - either your shell (the dotfiles `export-bw-env-vars.sh` exports them from
+# Bitwarden) or a gitignored csharp/.env. See the `eunomia` service's environment block.
 services:
   postgres:
     image: postgres:17
     environment:
       POSTGRES_DB: eunomia
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: eunomia_dev
+      # Kept in sync with the app's POSTGRES__PASSWORD; override both from the same host var.
+      POSTGRES_PASSWORD: ${POSTGRES__PASSWORD:-eunomia_dev}
     ports:
       - "5432:5432"
     volumes:
@@ -38,14 +43,37 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ASPNETCORE_ENVIRONMENT: Production
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://aspire-dashboard:18889"
-      OTEL_SERVICE_NAME: Eunomia
-      POSTGRES__HOST: postgres
-      POSTGRES__PORT: "5432"
-      POSTGRES__DATABASE: eunomia
-      POSTGRES__USERNAME: postgres
-      POSTGRES__PASSWORD: eunomia_dev
+      # Fixed for the containerized stack.
+      - ASPNETCORE_ENVIRONMENT=Production
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
+      - OTEL_SERVICE_NAME=Eunomia
+      - POSTGRES__HOST=postgres
+      - POSTGRES__PORT=5432
+      - POSTGRES__DATABASE=eunomia
+      - POSTGRES__USERNAME=postgres
+      - POSTGRES__PASSWORD=${POSTGRES__PASSWORD:-eunomia_dev}
+      # Secrets passed through from the host environment (your shell - exported by the dotfiles
+      # scripts/export-bw-env-vars.sh from Bitwarden - or a gitignored csharp/.env). Bare-key
+      # form: each var is injected ONLY if it is set on the host; if unset it is omitted so the
+      # image's appsettings.*.json stays the fallback (an empty value would otherwise clobber it).
+      # `__` is the .NET config separator, e.g. Eunomia__JwtKey overrides Eunomia:JwtKey.
+      - GITHUB_TOKEN
+      - Eunomia__JwtKey
+      - Eunomia__GitHubOAuth__Enabled
+      - Eunomia__GitHubOAuth__ClientId
+      - Eunomia__GitHubOAuth__ClientSecret
+      - Eunomia__GoogleOAuth__Enabled
+      - Eunomia__GoogleOAuth__ClientId
+      - Eunomia__GoogleOAuth__ClientSecret
+      - Eunomia__MicrosoftOAuth__Enabled
+      - Eunomia__MicrosoftOAuth__ClientId
+      - Eunomia__MicrosoftOAuth__ClientSecret
+      - Eunomia__ModrinthOAuth__Enabled
+      - Eunomia__ModrinthOAuth__ClientId
+      - Eunomia__ModrinthOAuth__ClientSecret
+      - Eunomia__DiscordOAuth__Enabled
+      - Eunomia__DiscordOAuth__ClientId
+      - Eunomia__DiscordOAuth__ClientSecret
     volumes:
       # Persist the DataProtection key ring across redeploys (written by the auth layer) so a deploy
       # no longer logs everyone out / breaks in-flight logins.
