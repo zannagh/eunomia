@@ -46,10 +46,15 @@ public static class EunomiaWebApp
         app.Services.MigrateDatabase(isDevelopment);
         app.Services.InitializeServerBlocking(isDevelopment);
 
-        app.UseStaticFiles();
         app.UseWebSockets();
         app.UseMiddleware<WebSocketMiddleware>();
         app.UseEunomiaAuthentication();
+
+        // MapStaticAssets, not UseStaticFiles: from .NET 9 on, the Blazor framework scripts
+        // (/_framework/blazor.web.js) are served from the static asset manifest rather than as physical
+        // files under wwwroot, so UseStaticFiles alone 404s them and the dashboard loses all
+        // interactivity. This also serves wwwroot itself, with the precompressed variants.
+        app.MapStaticAssets();
         app.MapControllers();
         app.MapRazorComponents<EunomiaApp>().AddInteractiveServerRenderMode();
         app.MapPrometheusScrapingEndpoint();
