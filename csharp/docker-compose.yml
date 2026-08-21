@@ -29,10 +29,12 @@ services:
     restart: unless-stopped
 
   eunomia:
-    # Build the local source; swap for `image: ghcr.io/zannagh/eunomia:latest` to run a published build.
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Runs the published image so the deploy-hook can pull newer versions on release. To run a local
+    # build instead, comment out `image:` and uncomment the `build:` block below.
+    image: ghcr.io/zannagh/eunomia/eunomia-server:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -51,6 +53,33 @@ services:
     depends_on:
       - postgres
       - aspire-dashboard
+    restart: unless-stopped
+
+  # Receives the GitHub releases/packages webhook and, on a new published image, pulls and recreates
+  # the eunomia service. See deploy-hook/ (and deploy-hook/.env.example for the required vars).
+  # SECURITY: this drives the host docker daemon via the mounted socket, so it is effectively root on
+  # the host. It only acts on webhooks whose HMAC matches WEBHOOK_SECRET — keep that secret strong and
+  # never expose /ci/released publicly without it.
+  deploy-hook:
+    build:
+      context: ./deploy-hook
+    image: eunomia-deploy-hook:local
+    ports:
+      - "${DEPLOY_HOOK_PORT:-9000}:9000"
+    environment:
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:?set WEBHOOK_SECRET in csharp/.env and in the GitHub webhook}
+      COMPOSE_DIR: ${COMPOSE_DIR:?set COMPOSE_DIR in csharp/.env to this dir's absolute host path}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-eunomia}
+      DEPLOY_SERVICE: eunomia
+      # GHCR login for a PRIVATE package. Give it a read:packages token. Leave empty if public.
+      GHCR_USER: ${GHCR_USER:-zannagh}
+      GHCR_TOKEN: ${GHCR_TOKEN:-}
+    volumes:
+      # Drive the host docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same-path mount so `docker compose` inside resolves the stack's relative bind mounts to the
+      # identical host paths the daemon expects.
+      - ${COMPOSE_DIR}:${COMPOSE_DIR}
     restart: unless-stopped
 
 volumes:
