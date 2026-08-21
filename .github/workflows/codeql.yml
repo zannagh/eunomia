@@ -31,13 +31,16 @@ jobs:
         include:
           - language: java-kotlin
             build-mode: none
+          - language: csharp
+            build-mode: none
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      # build-mode: none extracts straight from source - no compiler, no Gradle. eunomia is Java
-      # (the only Kotlin is buildSrc / gradle-conventions Gradle logic, which `none` skips and which
-      # carries nothing worth scanning). If shipped Kotlin is ever added, switch to a traced build.
+      # build-mode: none extracts straight from source - no compiler, no Gradle, no dotnet SDK. eunomia
+      # is Java (the only Kotlin is buildSrc / gradle-conventions Gradle logic, which `none` skips and
+      # which carries nothing worth scanning) plus the C# server under csharp/. If shipped Kotlin is
+      # ever added, switch that leg to a traced build.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
