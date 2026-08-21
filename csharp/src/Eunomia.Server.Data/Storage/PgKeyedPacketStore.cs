@@ -19,7 +19,11 @@ namespace Eunomia.Server.Data.Storage;
 public sealed class PgKeyedPacketStore : IKeyedPacketStore
 {
     private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
-    private readonly ConcurrentDictionary<(string Scope, string Channel), object> _channelLocks = new();
+    // Keyed by scope, NOT by (scope, channel). TouchServer does a read-then-insert on Servers, which is
+    // keyed by scope alone: two puts to the same scope on different channels would take different locks,
+    // both observe no server row, and both insert - a UNIQUE violation on Servers.Scope (23505 on
+    // Postgres). Serializing per scope costs channel parallelism within one scope and buys correctness.
+    private readonly ConcurrentDictionary<string, object> _scopeLocks = new();
 
     public PgKeyedPacketStore(IDbContextFactory<EunomiaDbContext> contextFactory)
     {
@@ -29,8 +33,8 @@ public sealed class PgKeyedPacketStore : IKeyedPacketStore
     public void Put(string scope, string channel, string key, JsonElement payload)
     {
         string raw = payload.GetRawText();
-        object channelLock = _channelLocks.GetOrAdd((scope, channel), _ => new object());
-        lock (channelLock)
+        object scopeLock = _scopeLocks.GetOrAdd(scope, _ => new object());
+        lock (scopeLock)
         {
             using EunomiaDbContext context = _contextFactory.CreateDbContext();
             UpsertEntry(context, scope, channel, key, raw);
