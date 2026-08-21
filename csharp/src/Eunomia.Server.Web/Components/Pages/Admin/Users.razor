@@ -9,17 +9,17 @@
 <div class="eu-page">
     <div class="eu-page-head">
         <h1>User management</h1>
-        <button class="eu-btn" @onclick="LoadAsync" disabled="@loading">Refresh</button>
+        <button class="eu-btn" @onclick="LoadAsync" disabled="@_loading">Refresh</button>
     </div>
 
-    @if (!string.IsNullOrEmpty(error))
+    @if (!string.IsNullOrEmpty(_error))
     {
-        <div class="eu-alert eu-alert-danger">@error</div>
+        <div class="eu-alert eu-alert-danger">@_error</div>
     }
 
-    @if (users.Count == 0)
+    @if (_users.Count == 0)
     {
-        <div class="eu-empty">@(loading ? "Loading..." : "No users.")</div>
+        <div class="eu-empty">@(_loading ? "Loading..." : "No users.")</div>
     }
     else
     {
@@ -28,7 +28,7 @@
                 <tr><th>User</th><th>Identifier</th><th>Linked</th><th>Role</th></tr>
             </thead>
             <tbody>
-                @foreach (UserAdminRecord row in users)
+                @foreach (UserAdminRecord row in _users)
                 {
                     <tr>
                         <td>@row.DisplayName</td>
@@ -49,7 +49,7 @@
                         <td>
                             <select class="eu-input" value="@row.Role"
                                     @onchange="@(e => OnRoleChangedAsync(row.Id, e.Value?.ToString()))"
-                                    disabled="@busy">
+                                    disabled="@_busy">
                                 @foreach (IdentityRole role in Roles)
                                 {
                                     <option value="@role" selected="@(role == row.Role)">@role</option>
@@ -64,10 +64,10 @@
 </div>
 
 @code {
-    private IReadOnlyList<UserAdminRecord> users = [];
-    private bool loading;
-    private bool busy;
-    private string? error;
+    private IReadOnlyList<UserAdminRecord> _users = [];
+    private bool _loading;
+    private bool _busy;
+    private string? _error;
 
     private static readonly IdentityRole[] Roles =
         [IdentityRole.Guest, IdentityRole.User, IdentityRole.Moderator, IdentityRole.Admin];
@@ -76,10 +76,10 @@
 
     private async Task LoadAsync()
     {
-        loading = true;
-        error = null;
-        users = await UserAdmin.ListUsersAsync();
-        loading = false;
+        _loading = true;
+        _error = null;
+        _users = await UserAdmin.ListUsersAsync();
+        _loading = false;
     }
 
     private async Task OnRoleChangedAsync(Guid userId, string? roleName)
@@ -89,8 +89,8 @@
             return;
         }
 
-        busy = true;
-        error = null;
+        _busy = true;
+        _error = null;
         try
         {
             User actingAdmin = await CurrentUserService.GetCurrentUserAsync();
@@ -99,11 +99,11 @@
         }
         catch (UnauthorizedAccessException)
         {
-            error = "You are not authorized to change roles.";
+            _error = "You are not authorized to change roles.";
         }
         finally
         {
-            busy = false;
+            _busy = false;
         }
     }
 }

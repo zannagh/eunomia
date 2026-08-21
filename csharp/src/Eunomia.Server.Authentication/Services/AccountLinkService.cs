@@ -20,18 +20,18 @@ public class AccountLinkService : IAccountLinkService
     public const string Modrinth = "modrinth";
     public const string Discord = "discord";
 
-    private readonly EunomiaAuthSettings settings;
-    private readonly ISecurityTokenHandler tokenHandler;
-    private readonly IDbContextFactory<EunomiaDbContext> dbContextFactory;
+    private readonly EunomiaAuthSettings _settings;
+    private readonly ISecurityTokenHandler _tokenHandler;
+    private readonly IDbContextFactory<EunomiaDbContext> _dbContextFactory;
 
     public AccountLinkService(
         EunomiaAuthSettings settings,
         ISecurityTokenHandler tokenHandler,
         IDbContextFactory<EunomiaDbContext> dbContextFactory)
     {
-        this.settings = settings;
-        this.tokenHandler = tokenHandler;
-        this.dbContextFactory = dbContextFactory;
+        _settings = settings;
+        _tokenHandler = tokenHandler;
+        _dbContextFactory = dbContextFactory;
     }
 
     public bool IsLinkable(string provider)
@@ -71,8 +71,8 @@ public class AccountLinkService : IAccountLinkService
 
         VerificationResult result = provider switch
         {
-            Modrinth => await tokenHandler.VerifyModrinthAuthentication(config.ClientId, config.ClientSecret, code, redirectUri),
-            Discord => await tokenHandler.VerifyDiscordAuthentication(config.ClientId, config.ClientSecret, code, redirectUri),
+            Modrinth => await _tokenHandler.VerifyModrinthAuthentication(config.ClientId, config.ClientSecret, code, redirectUri),
+            Discord => await _tokenHandler.VerifyDiscordAuthentication(config.ClientId, config.ClientSecret, code, redirectUri),
             _ => new VerificationResult { Success = false, UserName = string.Empty, UserId = string.Empty },
         };
 
@@ -86,7 +86,7 @@ public class AccountLinkService : IAccountLinkService
 
     public async Task<UserExternalLink> UpsertLinkAsync(Guid userId, string provider, string externalId, string handle)
     {
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         // A provider identity maps to at most one Eunomia user. If this external account is already held by
         // a different user (e.g. it was claimed earlier by a standalone provider login), release that claim
@@ -127,7 +127,7 @@ public class AccountLinkService : IAccountLinkService
 
     public async Task<IReadOnlyList<UserExternalLink>> GetLinksAsync(Guid userId)
     {
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         return await dbContext.UserExternalLinks
             .Where(l => l.UserId == userId)
             .ToListAsync();
@@ -135,8 +135,8 @@ public class AccountLinkService : IAccountLinkService
 
     private OAuthProviderSettings? GetProvider(string provider) => provider switch
     {
-        Modrinth => settings.ModrinthOAuth,
-        Discord => settings.DiscordOAuth,
+        Modrinth => _settings.ModrinthOAuth,
+        Discord => _settings.DiscordOAuth,
         _ => null,
     };
 

@@ -18,11 +18,11 @@ namespace Eunomia.Server.Authentication.Handlers;
 /// </summary>
 public class RefreshTokenHandler : IRefreshTokenHandler
 {
-    private readonly IDbContextFactory<EunomiaDbContext> dbContextFactory;
+    private readonly IDbContextFactory<EunomiaDbContext> _dbContextFactory;
 
     public RefreshTokenHandler(IDbContextFactory<EunomiaDbContext> dbContextFactory)
     {
-        this.dbContextFactory = dbContextFactory;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task<RefreshToken> GenerateRefreshTokenAsync(string jwtSecret, string jwtIssuer, ClaimsIdentity? claimsIdentity, TimeSpan lifetime)
@@ -53,7 +53,7 @@ public class RefreshTokenHandler : IRefreshTokenHandler
             IsConsumed = false,
         };
 
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         await dbContext.RefreshTokens.AddAsync(refreshTokenData);
         await dbContext.SaveChangesAsync();
 
@@ -67,7 +67,7 @@ public class RefreshTokenHandler : IRefreshTokenHandler
             return null;
         }
 
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
 
         // A row existing is not enough: a consumed token must not be replayable in the window before the
@@ -86,14 +86,14 @@ public class RefreshTokenHandler : IRefreshTokenHandler
 
     public async Task<bool> ValidateRefreshTokenExpiryAsync(string refreshToken)
     {
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
         return token is { IsExpired: false, IsConsumed: false };
     }
 
     public async Task<bool> InvalidateRefreshTokenAsync(string refreshToken)
     {
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
         if (token is null || token.IsConsumed)
         {
@@ -107,7 +107,7 @@ public class RefreshTokenHandler : IRefreshTokenHandler
 
     private async Task CleanExpiredAndConsumedTokensAsync()
     {
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
         List<RefreshToken> invalidTokens = await dbContext.RefreshTokens
             .Where(t => t.IsConsumed || t.ExpiresAt < DateTime.UtcNow)
             .ToListAsync();

@@ -13,21 +13,21 @@
     <div class="eu-page-head">
         <h1>Servers</h1>
         <div class="eu-page-actions">
-            <span class="eu-muted">@servers.Count total</span>
-            <button class="eu-btn" @onclick="RefreshAsync" disabled="@loading">
-                @(loading ? "Refreshing..." : "Refresh")
+            <span class="eu-muted">@_servers.Count total</span>
+            <button class="eu-btn" @onclick="RefreshAsync" disabled="@_loading">
+                @(_loading ? "Refreshing..." : "Refresh")
             </button>
         </div>
     </div>
 
-    @if (servers.Count == 0)
+    @if (_servers.Count == 0)
     {
         <div class="eu-empty">No servers have connected yet.</div>
     }
     else
     {
         <div class="eu-grid">
-            @foreach (ServerSummary server in servers)
+            @foreach (ServerSummary server in _servers)
             {
                 <a class="eu-card" href="@DetailHref(server.Scope)">
                     <div class="eu-card-head">
@@ -51,24 +51,24 @@
 </div>
 
 @code {
-    private IReadOnlyList<ServerSummary> servers = [];
-    private bool loading;
-    private PeriodicTimer? timer;
+    private IReadOnlyList<ServerSummary> _servers = [];
+    private bool _loading;
+    private PeriodicTimer? _timer;
 
     protected override async Task OnInitializedAsync()
     {
         // Created before the first await: if the circuit drops during RefreshAsync, Dispose still has a
         // timer to stop, instead of the loop going on to create one that nothing ever disposes.
-        timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
         await RefreshAsync();
         _ = AutoRefreshLoopAsync();
     }
 
     private async Task RefreshAsync()
     {
-        loading = true;
-        servers = await Directory.ListAsync();
-        loading = false;
+        _loading = true;
+        _servers = await Directory.ListAsync();
+        _loading = false;
     }
 
     // scope may contain ':' and '/', so a catch-all route param on the detail page consumes them; the
@@ -80,7 +80,7 @@
 
     private async Task AutoRefreshLoopAsync()
     {
-        if (timer is not { } refreshTimer)
+        if (_timer is not { } refreshTimer)
         {
             return;
         }
@@ -89,7 +89,7 @@
         {
             while (await refreshTimer.WaitForNextTickAsync())
             {
-                servers = await Directory.ListAsync();
+                _servers = await Directory.ListAsync();
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -105,5 +105,5 @@
         }
     }
 
-    public void Dispose() => timer?.Dispose();
+    public void Dispose() => _timer?.Dispose();
 }

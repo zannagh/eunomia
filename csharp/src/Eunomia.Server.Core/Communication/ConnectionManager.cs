@@ -17,7 +17,7 @@ public class ConnectionManager
     private const int MaxConnectionsPerIp = 20;
 
     /// <summary>How long to wait for a peer's close frame before abandoning a graceful close.</summary>
-    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan s_closeTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, EunomiaClient>> _clientsByScope = new();
     private readonly ConcurrentDictionary<string, int> _connectionsByIp = new();
@@ -153,7 +153,7 @@ public class ConnectionManager
         {
             if (client.Socket is { State: WebSocketState.Open })
             {
-                using CancellationTokenSource timeout = new(CloseTimeout);
+                using CancellationTokenSource timeout = new(s_closeTimeout);
                 await client.Socket.CloseAsync(status, reason, timeout.Token);
             }
         }

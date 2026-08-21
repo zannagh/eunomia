@@ -1,5 +1,5 @@
 name: Eunomia
-version: 0.0.1-preview.0
+version: ${version}
 main: de.zannagh.eunomia.paper.EunomiaPaperPlugin
 description: Eunomia server-side networking - the mod's server half for servers running Bukkit/Spigot/Paper/Purpur.
 authors:

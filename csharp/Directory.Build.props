@@ -78,6 +78,7 @@
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" />
     <!-- Serves a Prometheus /metrics scrape endpoint so metrics are readable over HTTP. -->
     <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" />
+    <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
   </ItemGroup>
 
     <!-- Testing packages -->
@@ -85,6 +86,9 @@
         <PackageReference Include="coverlet.collector" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
         <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" />
+        <!-- Boots the real Eunomia.Server.Web host in-process so routing (incl. API versioning) is
+             exercised, which controller-level unit tests never touch. -->
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="NSubstitute" />
         <PackageReference Include="SkiaSharp" />

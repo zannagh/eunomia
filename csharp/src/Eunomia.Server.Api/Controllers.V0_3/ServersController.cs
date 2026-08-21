@@ -1,13 +1,14 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
-using Eunomia.Server.Api.Models;
+using Asp.Versioning;
+using Eunomia.Server.Api.Models.V0_3;
 using Eunomia.Server.Authentication.Configuration;
 using Eunomia.Server.Core.Servers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace Eunomia.Server.Api.Controllers;
+namespace Eunomia.Server.Api.Controllers.V0_3;
 
 /// <summary>
 /// Dashboard-facing telemetry and moderation surface over the known Minecraft servers (scopes).
@@ -16,30 +17,35 @@ namespace Eunomia.Server.Api.Controllers;
 /// tightened to Admin-only via <see cref="AuthorizationPolicies.AdminOnly"/>, alongside user-role management.
 /// </summary>
 [ApiController]
-[Route("api/servers")]
+[ApiVersion("0.3")]
+[Route("api/v{version:apiVersion}/[controller]")]
+
+// Legacy: pre-versioning clients (Java 0.3.0 and earlier) call the unversioned path. Resolves to
+// DefaultApiVersion. Retire once traffic on it hits zero.
+[Route("api/[controller]")]
 [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
 [Produces("application/json")]
 public class ServersController : ControllerBase
 {
-    private readonly IServerDirectory directory;
-    private readonly IServerBlockService blockService;
+    private readonly IServerDirectory _directory;
+    private readonly IServerBlockService _blockService;
 
     public ServersController(IServerDirectory directory, IServerBlockService blockService)
     {
-        this.directory = directory;
-        this.blockService = blockService;
+        _directory = directory;
+        _blockService = blockService;
     }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ServerSummary>>> ListAsync(CancellationToken cancellationToken)
     {
-        return Ok(await directory.ListAsync(cancellationToken));
+        return Ok(await _directory.ListAsync(cancellationToken));
     }
 
     [HttpGet("{scope}")]
     public async Task<ActionResult<ServerDetail>> GetAsync(string scope, CancellationToken cancellationToken)
     {
-        ServerDetail? detail = await directory.GetAsync(scope, cancellationToken);
+        ServerDetail? detail = await _directory.GetAsync(scope, cancellationToken);
         if (detail is null)
         {
             return NotFound();
@@ -55,7 +61,7 @@ public class ServersController : ControllerBase
         [FromQuery] int limit = 100,
         CancellationToken cancellationToken = default)
     {
-        return Ok(await directory.GetLogsAsync(scope, level, limit, cancellationToken));
+        return Ok(await _directory.GetLogsAsync(scope, level, limit, cancellationToken));
     }
 
     [HttpPost("{scope}/block")]
@@ -65,7 +71,7 @@ public class ServersController : ControllerBase
         [FromBody] BlockServerRequest? request,
         CancellationToken cancellationToken)
     {
-        await blockService.BlockAsync(scope, request?.Reason, cancellationToken);
+        await _blockService.BlockAsync(scope, request?.Reason, cancellationToken);
         return NoContent();
     }
 
@@ -73,7 +79,7 @@ public class ServersController : ControllerBase
     [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
     public async Task<IActionResult> UnblockAsync(string scope, CancellationToken cancellationToken)
     {
-        await blockService.UnblockAsync(scope, cancellationToken);
+        await _blockService.UnblockAsync(scope, cancellationToken);
         return NoContent();
     }
 }

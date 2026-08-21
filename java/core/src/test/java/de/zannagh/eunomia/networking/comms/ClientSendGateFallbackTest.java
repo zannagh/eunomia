@@ -53,6 +53,36 @@ class ClientSendGateFallbackTest {
     }
 
     @Test
+    void deactivatingForAReconnectParksInsteadOfDropping() {
+        // The relay's socket dropped and a backoff reconnect is pending. Sends made in that window must survive
+        // it: the relay 409s a PUT with no live session behind it and nothing retries a 409.
+        CommunicationManager.beginServerProbe();
+        CommunicationManager.markServerProbeTimedOut();
+        CommunicationManager.setExternalTransportActive(true);
+
+        CommunicationManager.setExternalTransportActive(false);
+        CommunicationManager.sendToServer(C2S, new Msg("during-reconnect"));
+        assertTrue(delivered.isEmpty(), "no destination while the socket is down - park, do not drop");
+
+        CommunicationManager.setExternalTransportActive(true);
+        assertEquals(List.of("during-reconnect"), delivered, "the reconnect flushes what was parked");
+    }
+
+    @Test
+    void deactivatingDoesNotDropAQueueParkedBeforeTheRelayEverOpened() {
+        CommunicationManager.beginServerProbe();
+        CommunicationManager.sendToServer(C2S, new Msg("join"));
+        CommunicationManager.markServerProbeTimedOut();
+
+        // The selector parks explicitly when it starts a relay client, before the socket reports OPEN.
+        CommunicationManager.setExternalTransportActive(false);
+        assertTrue(delivered.isEmpty(), "still parked");
+
+        CommunicationManager.setExternalTransportActive(true);
+        assertEquals(List.of("join"), delivered, "the join-time send survives to the open socket");
+    }
+
+    @Test
     void concludingNoRelayDropsTheParkedSend() {
         CommunicationManager.beginServerProbe();
         CommunicationManager.sendToServer(C2S, new Msg("join"));

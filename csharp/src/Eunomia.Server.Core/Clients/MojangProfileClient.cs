@@ -16,8 +16,8 @@ public class MojangProfileClient
 {
     private const string DisableGateEnvironmentVariable = "EUNOMIA_DISABLE_MOJANG_GATE";
 
-    private static readonly TimeSpan PositiveTtl = TimeSpan.FromHours(24);
-    private static readonly TimeSpan NegativeTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan s_positiveTtl = TimeSpan.FromHours(24);
+    private static readonly TimeSpan s_negativeTtl = TimeSpan.FromMinutes(5);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<MojangProfileClient> _logger;
@@ -50,7 +50,7 @@ public class MojangProfileClient
         }
 
         bool result = await FetchAsync(uuid, cancellationToken);
-        TimeSpan ttl = result ? PositiveTtl : NegativeTtl;
+        TimeSpan ttl = result ? s_positiveTtl : s_negativeTtl;
         _cache[uuid] = (result, DateTimeOffset.UtcNow + ttl);
         return result;
     }

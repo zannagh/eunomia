@@ -12,7 +12,7 @@ namespace Eunomia.Server.Tests.TestSupport;
 /// </summary>
 public sealed class RecordingWebSocket : WebSocket
 {
-    private WebSocketState state = WebSocketState.Open;
+    private WebSocketState _state = WebSocketState.Open;
 
     public WebSocketCloseStatus? RecordedStatus { get; private set; }
 
@@ -22,20 +22,20 @@ public sealed class RecordingWebSocket : WebSocket
 
     public override string? CloseStatusDescription => RecordedReason;
 
-    public override WebSocketState State => state;
+    public override WebSocketState State => _state;
 
     public override string? SubProtocol => null;
 
     public override void Abort()
     {
-        state = WebSocketState.Aborted;
+        _state = WebSocketState.Aborted;
     }
 
     public override Task CloseAsync(WebSocketCloseStatus closeStatus, string? statusDescription, CancellationToken cancellationToken)
     {
         RecordedStatus = closeStatus;
         RecordedReason = statusDescription;
-        state = WebSocketState.Closed;
+        _state = WebSocketState.Closed;
         return Task.CompletedTask;
     }
 
@@ -46,7 +46,7 @@ public sealed class RecordingWebSocket : WebSocket
 
     public override void Dispose()
     {
-        state = WebSocketState.Closed;
+        _state = WebSocketState.Closed;
     }
 
     public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)

@@ -13,11 +13,11 @@ namespace Eunomia.Server.Tests.TestSupport;
 /// </summary>
 public sealed class RoutingHttpMessageHandler : HttpMessageHandler
 {
-    private readonly IReadOnlyList<(string UrlContains, string JsonBody)> routes;
+    private readonly IReadOnlyList<(string UrlContains, string JsonBody)> _routes;
 
     public RoutingHttpMessageHandler(params (string UrlContains, string JsonBody)[] routes)
     {
-        this.routes = routes;
+        _routes = routes;
     }
 
     public List<HttpRequestMessage> Requests { get; } = [];
@@ -27,7 +27,7 @@ public sealed class RoutingHttpMessageHandler : HttpMessageHandler
         Requests.Add(request);
 
         string url = request.RequestUri?.ToString() ?? string.Empty;
-        foreach ((string urlContains, string jsonBody) in routes)
+        foreach ((string urlContains, string jsonBody) in _routes)
         {
             if (url.Contains(urlContains, StringComparison.OrdinalIgnoreCase))
             {

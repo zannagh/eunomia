@@ -2,7 +2,7 @@
 // See License in the project root for license information.
 
 using System.Reflection;
-using Eunomia.Server.Api.Controllers;
+using Eunomia.Server.Api.Controllers.V0_3;
 using Eunomia.Server.Authentication.Configuration;
 using Microsoft.AspNetCore.Authorization;
 

@@ -2,7 +2,9 @@
 // See License in the project root for license information.
 
 using System.Text.Json;
+using Asp.Versioning;
 using Eunomia.Server.Api.Middlewares;
+using Eunomia.Server.Api.Versioning;
 using Eunomia.Server.Authentication;
 using Eunomia.Server.Authentication.Controllers;
 using Eunomia.Server.Core.Clients;
@@ -63,6 +65,22 @@ public static class EunomiaWebApp
             .AddJsonOptions(options =>
                 options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
         services.AddHttpClient();
+
+        // URL-segment API versioning: /api/v0.3/... . The version mirrors the release semver
+        // major.minor with the patch truncated, so 0.3.x -> "0.3". Without this registration the
+        // {version:apiVersion} route constraint is unknown to RouteOptions.ConstraintMap and endpoint
+        // construction throws at runtime even though the build succeeds.
+        services.AddApiVersioning(options =>
+            {
+                // Tracks the OLDEST still-supported version, never the newest. Unversioned callers are
+                // assumed to be legacy clients, so adding 0.4 must NOT move this off 0.3. Read from the
+                // controller declarations rather than restated here, so the two cannot drift apart.
+                options.DefaultApiVersion = EunomiaApiVersions.Oldest;
+                options.AssumeDefaultVersionWhenUnspecified = true;
+                options.ReportApiVersions = true;
+                options.ApiVersionReader = new UrlSegmentApiVersionReader();
+            })
+            .AddMvc();
 
         // Blazor Server dashboard UI. AddCascadingAuthenticationState + antiforgery are already wired by
         // AddEunomiaAuthentication, so only the Razor component + interactive server render mode are added.

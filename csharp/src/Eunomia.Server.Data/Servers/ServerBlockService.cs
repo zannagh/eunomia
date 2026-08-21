@@ -19,45 +19,45 @@ namespace Eunomia.Server.Data.Servers;
 /// </summary>
 public sealed class ServerBlockService : IServerBlockService
 {
-    private readonly IDbContextFactory<EunomiaDbContext> contextFactory;
-    private readonly ConnectionManager connectionManager;
-    private readonly ILogger<ServerBlockService> logger;
-    private readonly ConcurrentDictionary<string, byte> blocked = new(StringComparer.Ordinal);
+    private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
+    private readonly ConnectionManager _connectionManager;
+    private readonly ILogger<ServerBlockService> _logger;
+    private readonly ConcurrentDictionary<string, byte> _blocked = new(StringComparer.Ordinal);
 
     public ServerBlockService(
         IDbContextFactory<EunomiaDbContext> contextFactory,
         ConnectionManager connectionManager,
         ILogger<ServerBlockService> logger)
     {
-        this.contextFactory = contextFactory;
-        this.connectionManager = connectionManager;
-        this.logger = logger;
+        _contextFactory = contextFactory;
+        _connectionManager = connectionManager;
+        _logger = logger;
     }
 
     public bool IsBlocked(string scope)
     {
-        return blocked.ContainsKey(scope);
+        return _blocked.ContainsKey(scope);
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         List<string> blockedScopes = await context.Servers
             .AsNoTracking()
             .Where(s => s.IsBlocked)
             .Select(s => s.Scope)
             .ToListAsync(cancellationToken);
 
-        blocked.Clear();
+        _blocked.Clear();
         foreach (string scope in blockedScopes)
         {
-            blocked[scope] = 0;
+            _blocked[scope] = 0;
         }
     }
 
     public async Task BlockAsync(string scope, string? reason, CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         DateTime now = DateTime.UtcNow;
         ServerRecord? server = await context.Servers.FindAsync([scope], cancellationToken);
         if (server is null)
@@ -70,18 +70,18 @@ public sealed class ServerBlockService : IServerBlockService
         server.BlockReason = reason;
         await context.SaveChangesAsync(cancellationToken);
 
-        blocked[scope] = 0;
-        using (logger.BeginScope(ServerScope.Property(scope)))
+        _blocked[scope] = 0;
+        using (_logger.BeginScope(ServerScope.Property(scope)))
         {
-            logger.LogInformation("Server {Scope} blocked: {Reason}", LogSafe.Value(scope), LogSafe.Value(reason ?? "(no reason)"));
+            _logger.LogInformation("Server {Scope} blocked: {Reason}", LogSafe.Value(scope), LogSafe.Value(reason ?? "(no reason)"));
         }
 
-        await connectionManager.CloseScopeAsync(scope, WebSocketCloseStatus.PolicyViolation, "server blocked");
+        await _connectionManager.CloseScopeAsync(scope, WebSocketCloseStatus.PolicyViolation, "server blocked");
     }
 
     public async Task UnblockAsync(string scope, CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         ServerRecord? server = await context.Servers.FindAsync([scope], cancellationToken);
         if (server is not null)
         {
@@ -90,10 +90,10 @@ public sealed class ServerBlockService : IServerBlockService
             await context.SaveChangesAsync(cancellationToken);
         }
 
-        blocked.TryRemove(scope, out _);
-        using (logger.BeginScope(ServerScope.Property(scope)))
+        _blocked.TryRemove(scope, out _);
+        using (_logger.BeginScope(ServerScope.Property(scope)))
         {
-            logger.LogInformation("Server {Scope} unblocked", LogSafe.Value(scope));
+            _logger.LogInformation("Server {Scope} unblocked", LogSafe.Value(scope));
         }
     }
 }

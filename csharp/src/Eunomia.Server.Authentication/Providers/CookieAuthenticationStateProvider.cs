@@ -19,31 +19,31 @@ namespace Eunomia.Server.Authentication.Providers;
 /// </summary>
 public class CookieAuthenticationStateProvider : AuthenticationStateProvider
 {
-    private readonly IHttpContextAccessor httpContextAccessor;
-    private readonly IDataProtectionProvider dataProtectionProvider;
-    private AuthenticationState? cachedState;
-    private bool isInitialized;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IDataProtectionProvider _dataProtectionProvider;
+    private AuthenticationState? _cachedState;
+    private bool _isInitialized;
 
     public CookieAuthenticationStateProvider(IHttpContextAccessor httpContextAccessor, IDataProtectionProvider dataProtectionProvider)
     {
-        this.dataProtectionProvider = dataProtectionProvider;
-        this.httpContextAccessor = httpContextAccessor;
+        _dataProtectionProvider = dataProtectionProvider;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        if (isInitialized && cachedState != null)
+        if (_isInitialized && _cachedState != null)
         {
-            return Task.FromResult(cachedState);
+            return Task.FromResult(_cachedState);
         }
 
-        HttpContext? httpContext = httpContextAccessor.HttpContext;
+        HttpContext? httpContext = _httpContextAccessor.HttpContext;
 
         if (httpContext is { User.Identity.IsAuthenticated: true })
         {
-            cachedState = new AuthenticationState(httpContext.User);
-            isInitialized = true;
-            return Task.FromResult(cachedState);
+            _cachedState = new AuthenticationState(httpContext.User);
+            _isInitialized = true;
+            return Task.FromResult(_cachedState);
         }
 
         string cookieName = $".AspNetCore.{CookieAuthenticationDefaults.AuthenticationScheme}";
@@ -55,8 +55,8 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
                 ClaimsPrincipal? principal = ParseCookieTicket(cookieValue);
                 if (principal?.Identity?.IsAuthenticated == true)
                 {
-                    cachedState = new AuthenticationState(principal);
-                    return Task.FromResult(cachedState);
+                    _cachedState = new AuthenticationState(principal);
+                    return Task.FromResult(_cachedState);
                 }
             }
             catch (Exception ex)
@@ -65,15 +65,15 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
             }
         }
 
-        cachedState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-        return Task.FromResult(cachedState);
+        _cachedState = new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        return Task.FromResult(_cachedState);
     }
 
     private ClaimsPrincipal? ParseCookieTicket(string cookieValue)
     {
         try
         {
-            IDataProtector dataProtector = dataProtectionProvider.CreateProtector(
+            IDataProtector dataProtector = _dataProtectionProvider.CreateProtector(
                 "Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationMiddleware",
                 CookieAuthenticationDefaults.AuthenticationScheme,
                 "v2");

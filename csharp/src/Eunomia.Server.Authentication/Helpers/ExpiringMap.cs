@@ -15,24 +15,24 @@ namespace Eunomia.Server.Authentication.Helpers;
 /// <typeparam name="TValue">The stashed value type.</typeparam>
 public sealed class ExpiringMap<TValue>
 {
-    private readonly ConcurrentDictionary<string, Entry> entries = new();
-    private readonly TimeSpan lifetime;
+    private readonly ConcurrentDictionary<string, Entry> _entries = new();
+    private readonly TimeSpan _lifetime;
 
     public ExpiringMap(TimeSpan lifetime, TimeSpan sweepInterval)
     {
-        this.lifetime = lifetime;
+        _lifetime = lifetime;
         RecurringTask.Create(Sweep, sweepInterval, CancellationToken.None);
     }
 
     public void Add(string key, TValue value)
     {
-        entries.TryAdd(key, new Entry(value, DateTime.UtcNow.Add(lifetime)));
+        _entries.TryAdd(key, new Entry(value, DateTime.UtcNow.Add(_lifetime)));
     }
 
     /// <summary>Removes and returns the entry, unless it is missing or already past its lifetime.</summary>
     public bool TryConsume(string key, [MaybeNullWhen(false)] out TValue value)
     {
-        if (entries.TryRemove(key, out Entry entry) && entry.ExpiresAt > DateTime.UtcNow)
+        if (_entries.TryRemove(key, out Entry entry) && entry.ExpiresAt > DateTime.UtcNow)
         {
             value = entry.Value;
             return true;
@@ -45,9 +45,9 @@ public sealed class ExpiringMap<TValue>
     private void Sweep()
     {
         DateTime now = DateTime.UtcNow;
-        foreach (KeyValuePair<string, Entry> pair in entries.Where(pair => pair.Value.ExpiresAt <= now))
+        foreach (KeyValuePair<string, Entry> pair in _entries.Where(pair => pair.Value.ExpiresAt <= now))
         {
-            entries.TryRemove(pair.Key, out _);
+            _entries.TryRemove(pair.Key, out _);
         }
     }
 

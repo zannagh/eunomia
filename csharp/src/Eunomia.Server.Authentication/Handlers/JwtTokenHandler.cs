@@ -22,13 +22,13 @@ public class JwtTokenHandler : ISecurityTokenHandler
 {
     private const string UserAgent = "eunomia-auth";
 
-    private readonly IHttpClientFactory httpClientFactory;
-    private readonly IRefreshTokenHandler refreshTokenHandler;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IRefreshTokenHandler _refreshTokenHandler;
 
     public JwtTokenHandler(IHttpClientFactory httpClientFactory, IRefreshTokenHandler refreshTokenHandler)
     {
-        this.httpClientFactory = httpClientFactory;
-        this.refreshTokenHandler = refreshTokenHandler;
+        _httpClientFactory = httpClientFactory;
+        _refreshTokenHandler = refreshTokenHandler;
     }
 
     public async Task<VerificationResult> VerifyMicrosoftAuthentication(string clientId, string clientSecret,
@@ -121,7 +121,7 @@ public class JwtTokenHandler : ISecurityTokenHandler
         SecurityToken? jwt = tokenHandler.CreateToken(tokenDescriptor);
         string? jwtString = tokenHandler.WriteToken(jwt);
 
-        RefreshToken refreshToken = await refreshTokenHandler.GenerateRefreshTokenAsync(jwtSecret, jwtIssuer, claimsIdentity, TimeSpan.FromDays(14));
+        RefreshToken refreshToken = await _refreshTokenHandler.GenerateRefreshTokenAsync(jwtSecret, jwtIssuer, claimsIdentity, TimeSpan.FromDays(14));
 
         return new AccessTokenResult
         {
@@ -174,7 +174,7 @@ public class JwtTokenHandler : ISecurityTokenHandler
             request.Headers.TryAddWithoutValidation("Authorization", authorization);
         }
 
-        HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
+        HttpClient client = _httpClientFactory.CreateClient(nameof(JwtTokenHandler));
         using HttpResponseMessage response = await client.SendAsync(request);
         using JsonDocument? payload = await ReadJsonAsync(response, tokenUrl);
         if (payload is null)
@@ -196,7 +196,7 @@ public class JwtTokenHandler : ISecurityTokenHandler
         request.Headers.TryAddWithoutValidation("Authorization", useBearer ? $"Bearer {accessToken}" : accessToken);
         request.Headers.UserAgent.ParseAdd(UserAgent);
 
-        HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
+        HttpClient client = _httpClientFactory.CreateClient(nameof(JwtTokenHandler));
         using HttpResponseMessage response = await client.SendAsync(request);
         return await ReadJsonAsync(response, userUrl);
     }

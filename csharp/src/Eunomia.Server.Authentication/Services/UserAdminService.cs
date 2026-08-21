@@ -13,20 +13,20 @@ namespace Eunomia.Server.Authentication.Services;
 /// </summary>
 public sealed class UserAdminService : IUserAdminService
 {
-    private readonly IDbContextFactory<EunomiaDbContext> contextFactory;
-    private readonly ICurrentUserService currentUserService;
+    private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
+    private readonly ICurrentUserService _currentUserService;
 
     public UserAdminService(
         IDbContextFactory<EunomiaDbContext> contextFactory,
         ICurrentUserService currentUserService)
     {
-        this.contextFactory = contextFactory;
-        this.currentUserService = currentUserService;
+        _contextFactory = contextFactory;
+        _currentUserService = currentUserService;
     }
 
     public async Task<IReadOnlyList<UserAdminRecord>> ListUsersAsync(CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         List<User> users = await context.Users.AsNoTracking()
             .Include(u => u.ExternalLinks)
             .OrderBy(u => u.DisplayName)
@@ -46,7 +46,7 @@ public sealed class UserAdminService : IUserAdminService
             throw new UnauthorizedAccessException("Only an administrator may change user roles.");
         }
 
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         User? target = await context.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (target is null)
         {
@@ -57,7 +57,7 @@ public sealed class UserAdminService : IUserAdminService
         await context.SaveChangesAsync(cancellationToken);
 
         // Drop the cached current user so a follow-up read (e.g. the admin editing their own row) reflects it.
-        currentUserService.InvalidateCache();
+        _currentUserService.InvalidateCache();
     }
 
     private static UserAdminRecord ToRecord(User user)

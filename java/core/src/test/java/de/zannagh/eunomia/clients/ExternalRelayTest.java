@@ -2,6 +2,7 @@ package de.zannagh.eunomia.clients;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import de.zannagh.eunomia.common.ApiVersion;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,6 +24,25 @@ class ExternalRelayTest {
     void webSocketUriSwapsScheme() {
         assertEquals("ws://host:8080/ws?id=1", RelayEndpoints.ws("http://host:8080", "/ws?id=1").toString());
         assertEquals("wss://host/ws", RelayEndpoints.ws("https://host", "/ws").toString());
+    }
+
+    @Test
+    void restPathsCarryTheApiVersionSegment() {
+        String expectedVersion = ApiVersion.CURRENT;
+        assertTrue(expectedVersion.matches("\\d+\\.\\d+"), "api version segment was " + expectedVersion);
+        assertEquals(
+                "http://host:8080/api/v" + expectedVersion + "/packets/keyed",
+                RelayEndpoints.api("http://host:8080", "/packets/keyed").toString());
+        assertEquals(
+                "https://host/api/v" + expectedVersion + "/packets/plain",
+                RelayEndpoints.api("https://host", "/packets/plain").toString());
+    }
+
+    @Test
+    void healthStaysUnversioned() {
+        // /health is the reachability probe that gates the whole HTTP fallback; the relay serves it
+        // outside the versioned surface, so a version segment here would silently disable the fallback.
+        assertEquals("http://host:8080/health", RelayEndpoints.http("http://host:8080", "/health").toString());
     }
 
     @Test

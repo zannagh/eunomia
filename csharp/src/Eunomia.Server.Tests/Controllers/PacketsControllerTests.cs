@@ -2,8 +2,8 @@
 // See License in the project root for license information.
 
 using System.Text.Json;
-using Eunomia.Server.Api.Controllers;
-using Eunomia.Server.Api.Models;
+using Eunomia.Server.Api.Controllers.V0_3;
+using Eunomia.Server.Api.Models.V0_3;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
 using Eunomia.Server.Core.Servers;
@@ -25,7 +25,7 @@ namespace Eunomia.Server.Tests.Controllers;
 /// <see cref="PgKeyedPacketStore"/> (over an in-process SQLite database) proves keyed puts actually
 /// land in the store.
 /// </summary>
-public class PacketControllerTests : IDisposable
+public class PacketsControllerTests : IDisposable
 {
     private const string Scope = "mc.controller-tests:25565";
     private const string Channel = "eunomia:controller-test";
@@ -41,7 +41,7 @@ public class PacketControllerTests : IDisposable
     public async Task NotificationAsync_InvalidSenderGuid_Returns400()
     {
         ConnectionManager connectionManager = new();
-        PacketController controller = CreateController(connectionManager, NewStore());
+        PacketsController controller = CreateController(connectionManager, NewStore());
         PacketEnvelope env = NewEnvelope(sender: "not-a-guid");
 
         IActionResult result = await controller.NotificationAsync(env);
@@ -53,7 +53,7 @@ public class PacketControllerTests : IDisposable
     public async Task NotificationAsync_NoLiveSession_Returns409()
     {
         ConnectionManager connectionManager = new();
-        PacketController controller = CreateController(connectionManager, NewStore());
+        PacketsController controller = CreateController(connectionManager, NewStore());
         PacketEnvelope env = NewEnvelope(sender: Guid.NewGuid().ToString());
 
         // Deliberately not registered with connectionManager - no live WS session for this identity.
@@ -66,7 +66,7 @@ public class PacketControllerTests : IDisposable
     public async Task NotificationAsync_OversizeBody_Returns413()
     {
         ConnectionManager connectionManager = new();
-        PacketController controller = CreateController(connectionManager, NewStore(), contentLength: 1024 * 1024 + 1);
+        PacketsController controller = CreateController(connectionManager, NewStore(), contentLength: 1024 * 1024 + 1);
         PacketEnvelope env = NewEnvelope(sender: Guid.NewGuid().ToString());
 
         // The size gate runs before the connection check, so an unregistered sender still hits 413.
@@ -82,7 +82,7 @@ public class PacketControllerTests : IDisposable
         ConnectionManager connectionManager = new();
         Guid senderId = Guid.NewGuid();
         connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
-        PacketController controller = CreateController(connectionManager, NewStore());
+        PacketsController controller = CreateController(connectionManager, NewStore());
         PacketEnvelope env = NewEnvelope(sender: senderId.ToString());
 
         IActionResult result = await controller.NotificationAsync(env);
@@ -96,7 +96,7 @@ public class PacketControllerTests : IDisposable
         ConnectionManager connectionManager = new();
         Guid senderId = Guid.NewGuid();
         connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
-        PacketController controller = CreateController(connectionManager, NewStore());
+        PacketsController controller = CreateController(connectionManager, NewStore());
         PacketEnvelope env = NewEnvelope(sender: senderId.ToString(), key: null);
 
         IActionResult result = await controller.KeyedNotificationAsync(env);
@@ -109,7 +109,7 @@ public class PacketControllerTests : IDisposable
     {
         ConnectionManager connectionManager = new();
         IKeyedPacketStore store = NewStore();
-        PacketController controller = CreateController(connectionManager, store);
+        PacketsController controller = CreateController(connectionManager, store);
         PacketEnvelope env = NewEnvelope(sender: Guid.NewGuid().ToString(), key: "some-key");
 
         IActionResult result = await controller.KeyedNotificationAsync(env);
@@ -125,7 +125,7 @@ public class PacketControllerTests : IDisposable
         Guid senderId = Guid.NewGuid();
         connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
         IKeyedPacketStore store = NewStore();
-        PacketController controller = CreateController(connectionManager, store);
+        PacketsController controller = CreateController(connectionManager, store);
         PacketEnvelope env = NewEnvelope(sender: senderId.ToString(), key: "player-1");
 
         IActionResult result = await controller.KeyedNotificationAsync(env);
@@ -142,7 +142,7 @@ public class PacketControllerTests : IDisposable
         ConnectionManager connectionManager = new();
         Guid senderId = Guid.NewGuid();
         connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
-        PacketController controller = CreateController(connectionManager, NewStore(), blockService: BlockedFor(Scope));
+        PacketsController controller = CreateController(connectionManager, NewStore(), blockService: BlockedFor(Scope));
         PacketEnvelope env = NewEnvelope(sender: senderId.ToString());
 
         IActionResult result = await controller.NotificationAsync(env);
@@ -158,7 +158,7 @@ public class PacketControllerTests : IDisposable
         Guid senderId = Guid.NewGuid();
         connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
         IKeyedPacketStore store = NewStore();
-        PacketController controller = CreateController(connectionManager, store, blockService: BlockedFor(Scope));
+        PacketsController controller = CreateController(connectionManager, store, blockService: BlockedFor(Scope));
         PacketEnvelope env = NewEnvelope(sender: senderId.ToString(), key: "player-1");
 
         IActionResult result = await controller.KeyedNotificationAsync(env);
@@ -180,7 +180,7 @@ public class PacketControllerTests : IDisposable
         return blockService;
     }
 
-    private static PacketController CreateController(
+    private static PacketsController CreateController(
         ConnectionManager connectionManager,
         IKeyedPacketStore store,
         long? contentLength = null,
@@ -192,11 +192,11 @@ public class PacketControllerTests : IDisposable
             httpContext.Request.ContentLength = contentLength;
         }
 
-        return new PacketController(
+        return new PacketsController(
             connectionManager,
             store,
             blockService ?? Substitute.For<IServerBlockService>(),
-            NullLogger<PacketController>.Instance)
+            NullLogger<PacketsController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
         };

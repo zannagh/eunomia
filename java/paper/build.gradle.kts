@@ -11,7 +11,7 @@ plugins {
 // here too. paperweight-userdev is deliberately not used; nothing touches NMS.
 group = "de.zannagh.eunomia"
 
-val semVer = findProperty("semVer")?.toString()?.takeIf { it.isNotEmpty() } ?: "0.0.1-preview.0"
+val semVer = resolveSemVer()
 val displayVersion = "paper"
 version = "$semVer+$displayVersion"
 
@@ -60,6 +60,16 @@ dependencies {
 java {
     // Java 17 baseline: a 1.20.1 Paper server runs on 17, and :core is compiled at 17 too.
     toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+// plugin.yml is templated like fabric.mod.json / neoforge.mods.toml are, so the published jar
+// advertises the real build version instead of a hardcoded placeholder.
+val pluginYmlProps = mapOf("version" to version.toString())
+tasks.processResources {
+    inputs.properties(pluginYmlProps)
+    filesMatching("plugin.yml") {
+        expand(pluginYmlProps)
+    }
 }
 
 tasks.test {

@@ -19,26 +19,26 @@ namespace Eunomia.Server.Authentication.Middleware;
 /// </summary>
 public class DevAuthenticationMiddleware
 {
-    private readonly RequestDelegate next;
-    private readonly string identifier;
-    private readonly string name;
-    private readonly string id;
+    private readonly RequestDelegate _next;
+    private readonly string _identifier;
+    private readonly string _name;
+    private readonly string _id;
 
     public DevAuthenticationMiddleware(RequestDelegate next)
     {
-        this.next = next;
+        _next = next;
 
-        identifier = Environment.GetEnvironmentVariable("EUNOMIA_DEV_USER") ?? "Dev Admin__dev-admin";
-        int sep = identifier.IndexOf("__", StringComparison.Ordinal);
+        _identifier = Environment.GetEnvironmentVariable("EUNOMIA_DEV_USER") ?? "Dev Admin__dev-admin";
+        int sep = _identifier.IndexOf("__", StringComparison.Ordinal);
         if (sep > 0)
         {
-            name = identifier[..sep];
-            id = identifier[(sep + 2)..];
+            _name = _identifier[..sep];
+            _id = _identifier[(sep + 2)..];
         }
         else
         {
-            name = identifier;
-            id = identifier;
+            _name = _identifier;
+            _id = _identifier;
         }
     }
 
@@ -51,13 +51,13 @@ public class DevAuthenticationMiddleware
             && !context.Request.Path.StartsWithSegments("/js"))
         {
             ICurrentUserService currentUserService = context.RequestServices.GetRequiredService<ICurrentUserService>();
-            User user = await currentUserService.EnsureUserAsync(identifier);
+            User user = await currentUserService.EnsureUserAsync(_identifier);
 
             List<Claim> claims =
             [
-                new(ClaimTypes.NameIdentifier, id),
-                new(ClaimTypes.Name, name),
-                new("Name", name),
+                new(ClaimTypes.NameIdentifier, _id),
+                new(ClaimTypes.Name, _name),
+                new("Name", _name),
                 new(ClaimTypes.Role, user.Role.ToString()),
             ];
 
@@ -66,6 +66,6 @@ public class DevAuthenticationMiddleware
             context.User = principal;
         }
 
-        await next(context);
+        await _next(context);
     }
 }

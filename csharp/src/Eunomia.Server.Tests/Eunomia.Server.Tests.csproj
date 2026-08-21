@@ -15,6 +15,8 @@
     <ProjectReference Include="..\Eunomia.Server.Api\Eunomia.Server.Api.csproj" />
     <ProjectReference Include="..\Eunomia.Server.Authentication\Eunomia.Server.Authentication.csproj" />
     <ProjectReference Include="..\Eunomia.Server.Data\Eunomia.Server.Data.csproj" />
+    <!-- The versioned-routing smoke tests boot the real web host via WebApplicationFactory. -->
+    <ProjectReference Include="..\Eunomia.Server.Web\Eunomia.Server.Web.csproj" />
   </ItemGroup>
 
   <ItemGroup>
