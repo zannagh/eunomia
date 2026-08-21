@@ -59,6 +59,7 @@ public static class AuthenticationServices
         services.AddScoped<AuthenticationStateProvider, Providers.CookieAuthenticationStateProvider>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IAccountLinkService, AccountLinkService>();
+        services.AddScoped<IOAuthLoginService, OAuthLoginService>();
         services.AddScoped<IUserAdminService, UserAdminService>();
 
         services.AddAuthentication(PolicyScheme)
@@ -92,6 +93,7 @@ public static class AuthenticationServices
             {
                 options.LoginPath = "/account/login";
                 options.LogoutPath = "/account/logout";
+
                 // Authenticated-but-under-privileged users are forbidden by the authorization
                 // middleware on the initial SSR request; send them to the Blazor 403 page instead of
                 // the framework default (/Account/AccessDenied), which has no handler and 404s.

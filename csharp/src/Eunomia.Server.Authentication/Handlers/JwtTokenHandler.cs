@@ -8,6 +8,7 @@ using System.Text.Json;
 using Eunomia.Server.Authentication.Resources;
 using Eunomia.Server.Data.Entities;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 using TokenHandler = System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler;
 
 namespace Eunomia.Server.Authentication.Handlers;
@@ -127,7 +128,10 @@ public class JwtTokenHandler : ISecurityTokenHandler
             AccessToken = jwtString,
             RefreshToken = refreshToken.Token,
             TokenType = "Bearer",
-            ExpiresIn = (tokenDescriptor.Expires.Value.ToUniversalTime() - DateTime.UtcNow).Seconds,
+
+            // TotalSeconds, not Seconds: the latter is the 0-59 component, which reports a 1h token as
+            // expiring in 59 seconds and sends conforming clients into a refresh loop.
+            ExpiresIn = (int)(tokenDescriptor.Expires.Value.ToUniversalTime() - DateTime.UtcNow).TotalSeconds,
         };
     }
 
@@ -172,7 +176,12 @@ public class JwtTokenHandler : ISecurityTokenHandler
 
         HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
         HttpResponseMessage response = await client.SendAsync(request);
-        using JsonDocument payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using JsonDocument? payload = await ReadJsonAsync(response, tokenUrl);
+        if (payload is null)
+        {
+            return null;
+        }
+
         return payload.RootElement.TryGetProperty("access_token", out JsonElement token) ? token.GetString() : null;
     }
 
@@ -189,7 +198,32 @@ public class JwtTokenHandler : ISecurityTokenHandler
 
         HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
         HttpResponseMessage response = await client.SendAsync(request);
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return await ReadJsonAsync(response, userUrl);
+    }
+
+    /// <summary>
+    /// Reads a provider response as JSON, or null when the call failed or the body is not JSON at all.
+    /// Providers answer errors and rate limits with HTML or plain text often enough that parsing
+    /// unconditionally turns a failed login into an unhandled 500.
+    /// </summary>
+    private static async Task<JsonDocument?> ReadJsonAsync(HttpResponseMessage response, string url)
+    {
+        string body = await response.Content.ReadAsStringAsync();
+        if (!response.IsSuccessStatusCode)
+        {
+            Log.Warning("[Authentication] {Url} returned {StatusCode}", url, (int)response.StatusCode);
+            return null;
+        }
+
+        try
+        {
+            return JsonDocument.Parse(body);
+        }
+        catch (JsonException ex)
+        {
+            Log.Warning(ex, "[Authentication] {Url} returned a non-JSON body", url);
+            return null;
+        }
     }
 
     private static VerificationResult ReadProfile(JsonDocument? user, string idProperty, string nameProperty)

@@ -1,7 +1,6 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Eunomia.Server.Authentication.Helpers;
 using Eunomia.Server.Authentication.Resources;
@@ -10,28 +9,22 @@ namespace Eunomia.Server.Authentication.Providers;
 
 /// <summary>
 /// Short-lived, in-memory map from an OAuth <c>state</c> value to the provider/return URI it belongs to.
-/// Entries are consumed (removed) on lookup and the whole map is periodically cleared so abandoned
-/// logins do not accumulate.
+/// Entries are consumed (removed) on lookup and expire individually after ten minutes, so an abandoned
+/// login only drops its own state rather than everyone else's in-flight handshakes.
 /// </summary>
 public class RedirectUriProvider
 {
-    private ConcurrentDictionary<string, RedirectSettings> StateRedirectUris { get; } = new();
+    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
-    public RedirectUriProvider()
-    {
-        RecurringTask.Create(
-            () => StateRedirectUris.Clear(),
-            TimeSpan.FromMinutes(10),
-            CancellationToken.None);
-    }
+    private readonly ExpiringMap<RedirectSettings> stateRedirectUris = new(Lifetime, TimeSpan.FromMinutes(1));
 
     public void AddRedirectUri(string state, RedirectSettings redirectSettings)
     {
-        StateRedirectUris.TryAdd(state, redirectSettings);
+        stateRedirectUris.Add(state, redirectSettings);
     }
 
     public bool GetRedirectUri(string state, [MaybeNullWhen(false)] out RedirectSettings redirectSettings)
     {
-        return StateRedirectUris.TryRemove(state, out redirectSettings);
+        return stateRedirectUris.TryConsume(state, out redirectSettings);
     }
 }

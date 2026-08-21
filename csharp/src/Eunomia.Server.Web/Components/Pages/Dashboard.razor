@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @attribute [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
 @implements IDisposable
+@using Serilog
 @inject IServerDirectory Directory
 @inject NavigationManager Navigation
 
@@ -56,6 +57,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Created before the first await: if the circuit drops during RefreshAsync, Dispose still has a
+        // timer to stop, instead of the loop going on to create one that nothing ever disposes.
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
         await RefreshAsync();
         _ = AutoRefreshLoopAsync();
     }
@@ -76,11 +80,28 @@
 
     private async Task AutoRefreshLoopAsync()
     {
-        timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
-        while (await timer.WaitForNextTickAsync())
+        if (timer is not { } refreshTimer)
         {
-            servers = await Directory.ListAsync();
-            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            while (await refreshTimer.WaitForNextTickAsync())
+            {
+                servers = await Directory.ListAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The component was disposed mid-tick; nothing to do.
+        }
+        catch (Exception ex)
+        {
+            // Nothing observes this task, so an unhandled throw would silently stop auto-refresh and
+            // leave the dashboard showing stale data with no indication.
+            Log.Error(ex, "[Dashboard] Auto-refresh stopped");
         }
     }
 

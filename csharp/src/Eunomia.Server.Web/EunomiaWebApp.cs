@@ -32,6 +32,7 @@ public static class EunomiaWebApp
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
             .WriteTo.Console()
+
             // Dedicated per-server sink: only events carrying the ServerScope property reach it.
             .WriteToServerScopeLog(services));
 

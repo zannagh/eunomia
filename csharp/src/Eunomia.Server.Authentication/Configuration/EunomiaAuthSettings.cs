@@ -47,7 +47,7 @@ public class EunomiaAuthSettings
         JwtKey = string.IsNullOrEmpty(jwtKey) ? GenerateRandomKey() : jwtKey;
 
         if (TimeSpan.TryParse(
-                section["JwtTokenLifetime"] ?? Environment.GetEnvironmentVariable("SECURITY__TOKENLIFETIME"),
+                Configured(section["JwtTokenLifetime"], "SECURITY__TOKENLIFETIME"),
                 out TimeSpan lifetime))
         {
             JwtTokenLifetime = lifetime;
@@ -55,12 +55,8 @@ public class EunomiaAuthSettings
 
         Server = new AuthServerSettings
         {
-            Url = section["Server:Url"]
-                  ?? Environment.GetEnvironmentVariable("SERVER__URL")
-                  ?? "https://localhost:5001",
-            Port = int.TryParse(
-                    section["Server:Port"] ?? Environment.GetEnvironmentVariable("SERVER__PORT"),
-                    out int port)
+            Url = Configured(section["Server:Url"], "SERVER__URL") ?? "https://localhost:5001",
+            Port = int.TryParse(Configured(section["Server:Port"], "SERVER__PORT"), out int port)
                 ? port
                 : 5001,
         };
@@ -86,18 +82,32 @@ public class EunomiaAuthSettings
         return new OAuthProviderSettings
         {
             Enabled = bool.TryParse(
-                          section[$"{prefix}:Enabled"] ?? Environment.GetEnvironmentVariable($"{envPrefix}__ENABLED"),
+                          Configured(section[$"{prefix}:Enabled"], $"{envPrefix}__ENABLED"),
                           out bool enabled) && enabled,
-            ClientId = section[$"{prefix}:ClientId"]
-                       ?? Environment.GetEnvironmentVariable($"{envPrefix}__CLIENTID")
+            ClientId = Configured(section[$"{prefix}:ClientId"], $"{envPrefix}__CLIENTID")
                        ?? string.Empty,
-            ClientSecret = section[$"{prefix}:ClientSecret"]
-                           ?? Environment.GetEnvironmentVariable($"{envPrefix}__CLIENTSECRET")
+            ClientSecret = Configured(section[$"{prefix}:ClientSecret"], $"{envPrefix}__CLIENTSECRET")
                            ?? string.Empty,
-            OAuthUrl = section[$"{prefix}:OAuthUrl"]
-                       ?? Environment.GetEnvironmentVariable($"{envPrefix}__OAUTHURL")
+            OAuthUrl = Configured(section[$"{prefix}:OAuthUrl"], $"{envPrefix}__OAUTHURL")
                        ?? defaultUrl,
         };
+    }
+
+    /// <summary>
+    /// Prefers the bound configuration value, falling back to the documented environment variable.
+    /// The JSON provider hands back <c>""</c> (not null) for keys that ship with an empty value in
+    /// appsettings.json, so a plain <c>??</c> chain would never reach the environment variable and the
+    /// documented fallbacks would silently do nothing.
+    /// </summary>
+    private static string? Configured(string? configured, string environmentVariable)
+    {
+        if (!string.IsNullOrEmpty(configured))
+        {
+            return configured;
+        }
+
+        string? fromEnvironment = Environment.GetEnvironmentVariable(environmentVariable);
+        return string.IsNullOrEmpty(fromEnvironment) ? null : fromEnvironment;
     }
 
     private static string GenerateRandomKey()

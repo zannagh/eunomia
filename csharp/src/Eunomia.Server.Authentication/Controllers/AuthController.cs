@@ -8,7 +8,6 @@ using Eunomia.Server.Authentication.Helpers;
 using Eunomia.Server.Authentication.Providers;
 using Eunomia.Server.Authentication.Resources;
 using Eunomia.Server.Authentication.Services;
-using Eunomia.Server.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
@@ -26,8 +25,7 @@ public class AuthController : ControllerBase
     private readonly IRefreshTokenHandler refreshTokenHandler;
     private readonly RedirectUriProvider redirectUriProvider;
     private readonly CodeBasedAuthProvider codeBasedAuthProvider;
-    private readonly ICurrentUserService currentUserService;
-    private readonly IAccountLinkService accountLinkService;
+    private readonly IOAuthLoginService oauthLoginService;
 
     public AuthController(
         EunomiaAuthSettings settings,
@@ -35,16 +33,14 @@ public class AuthController : ControllerBase
         IRefreshTokenHandler refreshTokenHandler,
         RedirectUriProvider redirectUriProvider,
         CodeBasedAuthProvider codeBasedAuthProvider,
-        ICurrentUserService currentUserService,
-        IAccountLinkService accountLinkService)
+        IOAuthLoginService oauthLoginService)
     {
         this.settings = settings;
         this.tokenHandler = tokenHandler;
         this.refreshTokenHandler = refreshTokenHandler;
         this.redirectUriProvider = redirectUriProvider;
         this.codeBasedAuthProvider = codeBasedAuthProvider;
-        this.currentUserService = currentUserService;
-        this.accountLinkService = accountLinkService;
+        this.oauthLoginService = oauthLoginService;
     }
 
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
@@ -52,8 +48,8 @@ public class AuthController : ControllerBase
     [HttpGet("/oauth-callback")]
     [AllowAnonymous]
     public IActionResult OAuthCallback(
-        [FromQuery(Name = "state")] string state,
-        [FromQuery(Name = "code")] string code)
+        [FromQuery(Name = "state")] string? state,
+        [FromQuery(Name = "code")] string? code)
     {
         if (string.IsNullOrEmpty(state))
         {
@@ -78,44 +74,41 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     [Produces("application/json")]
     public async Task<IActionResult> Token(
-        [FromForm] string code,
-        [FromForm(Name = "grant_type")] string grantType,
-        [FromForm(Name = "refresh_token")] string refreshToken = "")
+        [FromForm] string? code,
+        [FromForm(Name = "grant_type")] string? grantType,
+        [FromForm(Name = "refresh_token")] string? refreshToken = "")
     {
         if (string.IsNullOrEmpty(settings.JwtKey))
         {
             return StatusCode(500, "Missing JWT Secret");
         }
 
-        if (grantType.Contains("refresh", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(refreshToken))
+        // No [ApiController] on this type, so model binding never rejects a malformed form for us:
+        // treat every missing field as a client error instead of dereferencing null.
+        if (!string.IsNullOrEmpty(grantType)
+            && grantType.Contains("refresh", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(refreshToken))
         {
             return await RefreshAsync(refreshToken);
         }
 
-        if (!codeBasedAuthProvider.GetIdentityProviderByCode(code, out string? provider) || string.IsNullOrEmpty(provider))
+        if (string.IsNullOrEmpty(code))
         {
-            return StatusCode(401, "Invalid code");
+            return BadRequest("Missing code parameter.");
         }
 
-        VerificationResult result = await VerifyProviderAsync(provider, code);
-        if (!result.Success)
+        OAuthLoginResult login = await oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
+        switch (login.Status)
         {
-            return StatusCode(401);
+            case OAuthLoginStatus.UnknownCode:
+                return StatusCode(401, "Invalid code");
+            case OAuthLoginStatus.ProviderRejected:
+                return StatusCode(401);
+            case OAuthLoginStatus.IncompleteProfile:
+                return StatusCode(500, "Invalid user data received from OAuth provider.");
         }
 
-        if (string.IsNullOrEmpty(result.UserId) || string.IsNullOrEmpty(result.UserName))
-        {
-            return StatusCode(500, "Invalid user data received from OAuth provider.");
-        }
-
-        string identifier = ClaimsHelper.ToUserIdentifier(result.UserName, result.UserId);
-        User user = await currentUserService.EnsureUserAsync(identifier);
-        if (provider == AccountLinkService.Modrinth)
-        {
-            await accountLinkService.UpsertLinkAsync(user.Id, AccountLinkService.Modrinth, result.UserId, result.UserName);
-        }
-
-        ClaimsIdentity identity = ClaimsHelper.ClaimsIdentityFromUserNameAndId(result.UserName, result.UserId);
+        ClaimsIdentity identity = ClaimsHelper.ClaimsIdentityFromUserNameAndId(login.UserName, login.UserId);
         AccessTokenResult token = await tokenHandler.GenerateJwtTokenAsync(
             settings.JwtKey, settings.Server.JwtIssuer, settings.JwtTokenLifetime, identity);
         return Ok(token);
@@ -128,33 +121,15 @@ public class AuthController : ControllerBase
             return StatusCode(401, "Invalid refresh token");
         }
 
-        try
+        // Rotation must be atomic with acceptance: if we cannot mark the presented token spent, we must
+        // not hand out a replacement, or the same token stays replayable until the next sweep.
+        if (!await refreshTokenHandler.InvalidateRefreshTokenAsync(refreshToken))
         {
-            await refreshTokenHandler.InvalidateRefreshTokenAsync(refreshToken);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to invalidate refresh token");
+            Log.Error("Refused refresh: could not consume presented refresh token");
+            return StatusCode(401, "Invalid refresh token");
         }
 
         return Ok(await tokenHandler.GenerateJwtTokenAsync(
             settings.JwtKey, settings.Server.JwtIssuer, settings.JwtTokenLifetime, claimsIdentity));
-    }
-
-    private Task<VerificationResult> VerifyProviderAsync(string provider, string code)
-    {
-        string redirectUri = $"{BaseUrl}/oauth-callback";
-        return provider switch
-        {
-            "google" => tokenHandler.VerifyGoogleAuthentication(
-                settings.GoogleOAuth.ClientId, settings.GoogleOAuth.ClientSecret, code, redirectUri, "authorization_code"),
-            "microsoft" => tokenHandler.VerifyMicrosoftAuthentication(
-                settings.MicrosoftOAuth.ClientId, settings.MicrosoftOAuth.ClientSecret, code, redirectUri, "authorization_code"),
-            "github" => tokenHandler.VerifyGitHubAuthentication(
-                settings.GitHubOAuth.ClientId, settings.GitHubOAuth.ClientSecret, code),
-            "modrinth" => tokenHandler.VerifyModrinthAuthentication(
-                settings.ModrinthOAuth.ClientId, settings.ModrinthOAuth.ClientSecret, code, redirectUri),
-            _ => Task.FromResult(new VerificationResult { Success = false, UserId = string.Empty, UserName = string.Empty }),
-        };
     }
 }

@@ -5,6 +5,7 @@ using System.Net.WebSockets;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
 using Eunomia.Server.Core.Servers;
+using Eunomia.Server.Core.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +22,9 @@ namespace Eunomia.Server.Api.Middlewares;
 /// </summary>
 public class WebSocketMiddleware
 {
+    /// <summary>How long to wait for a peer's close frame before abandoning a graceful close.</summary>
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+
     private readonly RequestDelegate _next;
     private readonly WebSocketHandler _webSocketHandler;
     private readonly ConnectionManager _connManager;
@@ -104,13 +108,33 @@ public class WebSocketMiddleware
             name = nameValue.ToString();
         }
 
-        return true;
+        // Both are persisted into varchar(512) by TouchPresenceAsync; refuse the handshake outright
+        // rather than accepting the socket and blowing up on the presence write afterwards.
+        return StorageLimits.IsWithinLimit(scope) && StorageLimits.IsWithinLimit(name);
+    }
+
+    /// <summary>
+    /// Closes with 1008 (PolicyViolation) without letting an unresponsive peer stall the request:
+    /// <see cref="WebSocket.CloseAsync"/> waits for the peer's close frame, which may never arrive.
+    /// </summary>
+    private static async Task CloseQuietlyAsync(WebSocket webSocket, string reason, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await webSocket.CloseAsync(WebSocketCloseStatus.PolicyViolation, reason, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // The socket is being refused either way; a peer that will not complete the handshake
+            // must not hold the request open.
+        }
     }
 
     private async Task RejectBlockedAsync(HttpContext context, string scope)
     {
         WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-        await webSocket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "server blocked", CancellationToken.None);
+        using CancellationTokenSource timeout = new(CloseTimeout);
+        await CloseQuietlyAsync(webSocket, "server blocked", timeout.Token);
         using (_logger.BeginScope(ServerScope.Property(scope)))
         {
             _logger.LogInformation("Refused websocket for blocked scope {Scope}", scope);
@@ -130,7 +154,8 @@ public class WebSocketMiddleware
 
         if (!_connManager.OnConnectionAdded(client, remoteIp))
         {
-            await webSocket.CloseAsync(WebSocketCloseStatus.PolicyViolation, "connection limit reached", CancellationToken.None);
+            using CancellationTokenSource timeout = new(CloseTimeout);
+            await CloseQuietlyAsync(webSocket, "connection limit reached", timeout.Token);
             return;
         }
 

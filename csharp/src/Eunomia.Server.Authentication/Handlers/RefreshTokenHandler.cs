@@ -62,10 +62,18 @@ public class RefreshTokenHandler : IRefreshTokenHandler
 
     public async Task<ClaimsIdentity?> ValidateRefreshTokenAsync(string refreshToken)
     {
+        if (string.IsNullOrEmpty(refreshToken))
+        {
+            return null;
+        }
+
         await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
 
-        if (token == null)
+        // A row existing is not enough: a consumed token must not be replayable in the window before the
+        // sweep deletes it, and an expired one must not outlive its lifetime just because nothing has
+        // generated a new token (and therefore run the sweep) since.
+        if (token is null || token.IsConsumed || token.IsExpired)
         {
             return null;
         }
@@ -80,18 +88,21 @@ public class RefreshTokenHandler : IRefreshTokenHandler
     {
         await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
-        return token is { IsExpired: false };
+        return token is { IsExpired: false, IsConsumed: false };
     }
 
-    public async Task InvalidateRefreshTokenAsync(string refreshToken)
+    public async Task<bool> InvalidateRefreshTokenAsync(string refreshToken)
     {
         await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
         RefreshToken? token = await dbContext.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
-        if (token != null)
+        if (token is null || token.IsConsumed)
         {
-            token.IsConsumed = true;
-            await dbContext.SaveChangesAsync();
+            return false;
         }
+
+        token.IsConsumed = true;
+        await dbContext.SaveChangesAsync();
+        return true;
     }
 
     private async Task CleanExpiredAndConsumedTokensAsync()

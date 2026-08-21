@@ -66,6 +66,13 @@ public final class ClientTransportSelector {
                 return;
             }
             startExternal(address, scope, name, playerId);
+        }).whenComplete((ignored, error) -> {
+            // The probe throwing (rather than returning false) would otherwise leave the gate parked for
+            // the rest of the connection, silently swallowing the join-time sends it is holding.
+            if (error != null) {
+                Eunomia.LOGGER.warn("External relay probe for {} failed; staying on the Minecraft transport", address, error);
+                abandonFallback();
+            }
         });
     }
 

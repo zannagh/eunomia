@@ -35,7 +35,7 @@ public class AccountLinkController : Controller
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
 
     [HttpGet("/account/link/{provider}")]
-    public IActionResult StartLink(string provider)
+    public async Task<IActionResult> StartLink(string provider)
     {
         if (!accountLinkService.IsLinkable(provider))
         {
@@ -50,7 +50,13 @@ public class AccountLinkController : Controller
             return Redirect("/profile?error=link_unavailable");
         }
 
-        redirectUriProvider.AddRedirectUri(state, new RedirectSettings { Uri = redirectUri, Provider = provider });
+        User owner = await currentUserService.GetCurrentUserAsync();
+        redirectUriProvider.AddRedirectUri(state, new RedirectSettings
+        {
+            Uri = redirectUri,
+            Provider = provider,
+            OwnerUserId = owner.Id,
+        });
         return Redirect(authorizeUrl);
     }
 
@@ -68,6 +74,16 @@ public class AccountLinkController : Controller
         }
 
         User user = await currentUserService.GetCurrentUserAsync();
+
+        // The state must have been minted by *this* user's StartLink. Without this, anyone could start a
+        // link, keep the code+state, and have a signed-in victim open the callback URL - binding the
+        // attacker's external identity to the victim's account (and, via UpsertLinkAsync's conflict
+        // cleanup, stripping it from its rightful owner).
+        if (redirect.OwnerUserId != user.Id)
+        {
+            return Redirect("/profile?error=link_state");
+        }
+
         string redirectUri = $"{BaseUrl}/account/link/{provider}/callback";
         UserExternalLink? link = await accountLinkService.CompleteLinkAsync(provider, code, redirectUri, user.Id);
 

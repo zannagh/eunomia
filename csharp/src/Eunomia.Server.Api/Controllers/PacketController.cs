@@ -106,6 +106,15 @@ public class PacketController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden);
         }
 
+        // These land in varchar(512) columns; reject over-long values here rather than letting the
+        // insert fail with a DbUpdateException after the packet has already been relayed.
+        if (!StorageLimits.IsWithinLimit(env.Scope)
+            || !StorageLimits.IsWithinLimit(env.Channel)
+            || !StorageLimits.IsWithinLimit(env.Key))
+        {
+            return BadRequest($"Scope, channel, and key must each be at most {StorageLimits.MaxIdentifierLength} characters.");
+        }
+
         if (!Guid.TryParse(env.Sender, out sender))
         {
             return BadRequest("Sender must be a valid UUID.");

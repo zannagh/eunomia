@@ -2,9 +2,7 @@
 // See License in the project root for license information.
 
 using System.Security.Claims;
-using System.Text.Json;
 using Eunomia.Server.Authentication.Configuration;
-using Eunomia.Server.Authentication.Helpers;
 using Eunomia.Server.Authentication.Providers;
 using Eunomia.Server.Authentication.Resources;
 using Eunomia.Server.Authentication.Services;
@@ -18,26 +16,25 @@ using Serilog;
 namespace Eunomia.Server.Authentication.Controllers;
 
 /// <summary>
-/// Browser-facing cookie login: kicks off the provider redirect, then on return exchanges the code via
-/// the local <c>/token</c> endpoint and signs the user into a cookie carrying their role claim.
+/// Browser-facing cookie login: kicks off the provider redirect, then on return resolves the code
+/// through <see cref="IOAuthLoginService"/> and signs the user into a cookie carrying their role claim.
+/// The exchange runs in-process; this deliberately does not call the server's own <c>/token</c> endpoint
+/// over HTTP, because that URL would have to be built from the request's (client-controlled) Host header.
 /// </summary>
 public class AccountController : Controller
 {
     private readonly EunomiaAuthSettings settings;
     private readonly RedirectUriProvider redirectUriProvider;
-    private readonly IHttpClientFactory httpClientFactory;
-    private readonly ICurrentUserService currentUserService;
+    private readonly IOAuthLoginService oauthLoginService;
 
     public AccountController(
         EunomiaAuthSettings settings,
         RedirectUriProvider redirectUriProvider,
-        IHttpClientFactory httpClientFactory,
-        ICurrentUserService currentUserService)
+        IOAuthLoginService oauthLoginService)
     {
         this.settings = settings;
         this.redirectUriProvider = redirectUriProvider;
-        this.httpClientFactory = httpClientFactory;
-        this.currentUserService = currentUserService;
+        this.oauthLoginService = oauthLoginService;
     }
 
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
@@ -53,8 +50,13 @@ public class AccountController : Controller
 
     [HttpGet("/account/external")]
     [AllowAnonymous]
-    public IActionResult ExternalLogin([FromQuery] string provider)
+    public IActionResult ExternalLogin([FromQuery] string? provider)
     {
+        if (string.IsNullOrEmpty(provider))
+        {
+            return Redirect("/oauth-select");
+        }
+
         (string AuthUrl, string ClientId)? config = GetProviderAuthConfig(provider);
         if (config is null)
         {
@@ -85,7 +87,7 @@ public class AccountController : Controller
 
     [HttpGet("/account/callback")]
     [AllowAnonymous]
-    public async Task<IActionResult> Callback([FromQuery] string code, [FromQuery] string state)
+    public async Task<IActionResult> Callback([FromQuery] string? code)
     {
         if (string.IsNullOrEmpty(code))
         {
@@ -94,30 +96,14 @@ public class AccountController : Controller
 
         try
         {
-            FormUrlEncodedContent tokenRequest = new(
-            [
-                new KeyValuePair<string, string>("grant_type", "authorization_code"),
-                new KeyValuePair<string, string>("code", code),
-                new KeyValuePair<string, string>("redirect_uri", $"{BaseUrl}/oauth-callback"),
-            ]);
-
-            using HttpClient httpClient = httpClientFactory.CreateClient(nameof(AccountController));
-            HttpResponseMessage tokenResponse = await httpClient.PostAsync($"{BaseUrl}/token", tokenRequest);
-
-            if (!tokenResponse.IsSuccessStatusCode)
+            OAuthLoginResult login = await oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
+            if (login.Status != OAuthLoginStatus.Success || login.User is not { } user)
             {
-                Log.Error("[Authentication] Token exchange failed with status {StatusCode}", tokenResponse.StatusCode);
+                Log.Error("[Authentication] Code exchange failed with status {Status}", login.Status);
                 return Redirect("/account/login?error=auth_failed");
             }
 
-            JsonElement tokenData = JsonSerializer.Deserialize<JsonElement>(await tokenResponse.Content.ReadAsStringAsync());
-            if (!tokenData.TryGetProperty("access_token", out JsonElement accessTokenElement)
-                || accessTokenElement.GetString() is not { Length: > 0 } accessToken)
-            {
-                return Redirect("/account/login?error=token_missing");
-            }
-
-            return await SignInFromAccessTokenAsync(accessToken);
+            return await SignInAsync(user, login.UserName, login.UserId);
         }
         catch (Exception ex)
         {
@@ -134,19 +120,11 @@ public class AccountController : Controller
         return LocalRedirect("/");
     }
 
-    private async Task<IActionResult> SignInFromAccessTokenAsync(string accessToken)
+    private async Task<IActionResult> SignInAsync(User user, string userName, string userId)
     {
-        System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler handler = new();
-        System.IdentityModel.Tokens.Jwt.JwtSecurityToken jsonToken = handler.ReadJwtToken(accessToken);
-
-        string userName = jsonToken.Claims.FirstOrDefault(x => x.Type == "unique_name")?.Value ?? string.Empty;
-        string userId = jsonToken.Claims.FirstOrDefault(x => x.Type == "nameid")?.Value ?? string.Empty;
-        string identifier = ClaimsHelper.ToUserIdentifier(userName, userId);
-
-        // Role lives on the User row, not the OAuth token: resolve (and admin-promote) the user now so the
-        // cookie principal carries a ClaimTypes.Role claim that the StaffOnly/AdminOnly policies read.
-        User user = await currentUserService.EnsureUserAsync(identifier);
-
+        // Role lives on the User row, not the OAuth profile: the resolved user already carries the
+        // (possibly admin-promoted) role, so the cookie principal gets a ClaimTypes.Role claim that the
+        // StaffOnly/AdminOnly policies read.
         List<Claim> claims =
         [
             new(ClaimTypes.NameIdentifier, userId),

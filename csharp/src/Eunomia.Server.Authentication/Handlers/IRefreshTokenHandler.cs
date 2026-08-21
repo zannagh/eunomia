@@ -11,9 +11,18 @@ public interface IRefreshTokenHandler
 {
     Task<RefreshToken> GenerateRefreshTokenAsync(string jwtSecret, string jwtIssuer, ClaimsIdentity? claimsIdentity, TimeSpan lifetime);
 
+    /// <summary>
+    /// Returns the identity carried by <paramref name="refreshToken"/>, or null when the token is
+    /// unknown, already consumed, or past its expiry.
+    /// </summary>
     Task<ClaimsIdentity?> ValidateRefreshTokenAsync(string refreshToken);
 
+    /// <summary>Whether the token exists and is still live (neither consumed nor expired).</summary>
     Task<bool> ValidateRefreshTokenExpiryAsync(string refreshToken);
 
-    Task InvalidateRefreshTokenAsync(string refreshToken);
+    /// <summary>
+    /// Marks the token spent. Returns false when there was no live token to consume, so callers can
+    /// refuse to rotate rather than issuing a replacement for a token they could not retire.
+    /// </summary>
+    Task<bool> InvalidateRefreshTokenAsync(string refreshToken);
 }

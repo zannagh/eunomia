@@ -16,6 +16,9 @@ public class ConnectionManager
     private const int MaxConnectionsPerScope = 500;
     private const int MaxConnectionsPerIp = 20;
 
+    /// <summary>How long to wait for a peer's close frame before abandoning a graceful close.</summary>
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, EunomiaClient>> _clientsByScope = new();
     private readonly ConcurrentDictionary<string, int> _connectionsByIp = new();
 
@@ -105,20 +108,10 @@ public class ConnectionManager
             return;
         }
 
-        foreach (EunomiaClient client in scopeClients.Values)
-        {
-            try
-            {
-                if (client.Socket is { State: WebSocketState.Open })
-                {
-                    await client.Socket.CloseAsync(status, reason, CancellationToken.None);
-                }
-            }
-            catch (Exception)
-            {
-                scopeClients.TryRemove(client.Id, out _);
-            }
-        }
+        // Close every client concurrently and under a deadline: CloseAsync waits for the peer's close
+        // frame, so one unresponsive relay would otherwise stall the admin request that triggered the
+        // block and hold up eviction of every remaining socket in the scope.
+        await Task.WhenAll(scopeClients.Values.Select(client => CloseClientAsync(scopeClients, client, status, reason)));
     }
 
     /// <summary>
@@ -147,6 +140,32 @@ public class ConnectionManager
             {
                 scopeClients.TryRemove(client.Id, out _);
             }
+        }
+    }
+
+    private static async Task CloseClientAsync(
+        ConcurrentDictionary<Guid, EunomiaClient> scopeClients,
+        EunomiaClient client,
+        WebSocketCloseStatus status,
+        string reason)
+    {
+        try
+        {
+            if (client.Socket is { State: WebSocketState.Open })
+            {
+                using CancellationTokenSource timeout = new(CloseTimeout);
+                await client.Socket.CloseAsync(status, reason, timeout.Token);
+            }
+        }
+        catch (Exception)
+        {
+            // Deliberately swallowed: a socket that will not close cleanly is still being evicted.
+        }
+        finally
+        {
+            // Deregister on every path. Leaving successfully-closed clients registered kept a blocked
+            // scope reporting as live until its receive loop happened to notice.
+            scopeClients.TryRemove(client.Id, out _);
         }
     }
 }
