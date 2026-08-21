@@ -8,9 +8,13 @@ ARG TARGETARCH
 WORKDIR /src
 
 # Copy the shared build/versioning config and every csproj first so `dotnet restore` is cached across
-# source-only changes.
+# source-only changes. Every project in Eunomia.Server.Web's reference graph must be listed here:
+# restore resolves ProjectReferences from disk, and a missing csproj leaves that project without a
+# project.assets.json, which only surfaces later as NETSDK1004 during the --no-restore publish.
 COPY Directory.Build.props Directory.Packages.props global.json .stylecop.json Directory.Versioning.targets ./
 COPY src/Eunomia.Server.Core/Eunomia.Server.Core.csproj src/Eunomia.Server.Core/
+COPY src/Eunomia.Server.Data/Eunomia.Server.Data.csproj src/Eunomia.Server.Data/
+COPY src/Eunomia.Server.Authentication/Eunomia.Server.Authentication.csproj src/Eunomia.Server.Authentication/
 COPY src/Eunomia.Server.Api/Eunomia.Server.Api.csproj src/Eunomia.Server.Api/
 COPY src/Eunomia.Server.Web/Eunomia.Server.Web.csproj src/Eunomia.Server.Web/
 # SkipEunomiaGitVersion bypasses Directory.Versioning.targets' git-based versioning, which would
