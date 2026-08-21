@@ -88,6 +88,17 @@ public class AccountLinkService : IAccountLinkService
     {
         await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
 
+        // A provider identity maps to at most one Eunomia user. If this external account is already held by
+        // a different user (e.g. it was claimed earlier by a standalone provider login), release that claim
+        // before (re)linking so linking succeeds cleanly instead of silently forking the identity in two.
+        List<UserExternalLink> conflicting = await dbContext.UserExternalLinks
+            .Where(l => l.Provider == provider && l.ExternalId == externalId && l.UserId != userId)
+            .ToListAsync();
+        if (conflicting.Count > 0)
+        {
+            dbContext.UserExternalLinks.RemoveRange(conflicting);
+        }
+
         UserExternalLink? link = await dbContext.UserExternalLinks
             .FirstOrDefaultAsync(l => l.UserId == userId && l.Provider == provider);
 
