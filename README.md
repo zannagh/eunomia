@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="images/eunomia-logo.png" alt="Eunomia logo" width="160" />
+</p>
+
 # eunomia
 A Java library for common methodology in Minecraft mods for configurations and networking - mod loader agnostic and without other dependencies. Easy to develop against by adding a Maven dependency for IDEs and a mod dependency for runtime.
 

@@ -110,7 +110,7 @@ class HttpFallbackE2ETest {
         payload.addProperty("playerId", alice.toString());
         payload.addProperty("note", "hello");
         PacketEnvelope envelope = new PacketEnvelope(
-                scope1, CHANNEL, alice.toString(), true, alice.toString(), payload);
+                scope1, "Scope One", CHANNEL, alice.toString(), true, alice.toString(), payload);
         assertEquals(200, put("/api/packets/keyed", envelope));
 
         // Bob (same scope, not the sender) receives the relayed envelope.
@@ -133,7 +133,7 @@ class HttpFallbackE2ETest {
         assertTrue(sync.entries.containsKey(alice.toString()), "snapshot carries the stored entry");
 
         // A put from an identity with no live socket is refused (session gate).
-        PacketEnvelope spoof = new PacketEnvelope(scope1, CHANNEL, eve.toString(), true, eve.toString(), payload);
+        PacketEnvelope spoof = new PacketEnvelope(scope1, "Scope One", CHANNEL, eve.toString(), true, eve.toString(), payload);
         assertEquals(409, put("/api/packets/keyed", spoof));
 
         aliceWs.close();

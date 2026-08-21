@@ -30,17 +30,19 @@ class ExternalRelayTest {
         JsonObject payload = new JsonObject();
         payload.addProperty("note", "hi");
         PacketEnvelope envelope = new PacketEnvelope(
-                "mc.example:25565", "eunomia:example_replicated", "uuid-1", true, "sender-uuid", payload);
+                "mc.example:25565", "Example SMP", "eunomia:example_replicated", "uuid-1", true, "sender-uuid", payload);
 
         String json = GSON.toJson(envelope);
         // Field names the C# server binds against must be present verbatim.
         assertTrue(json.contains("\"scope\""));
+        assertTrue(json.contains("\"name\""));
         assertTrue(json.contains("\"channel\""));
         assertTrue(json.contains("\"replicated\":true"));
         assertTrue(json.contains("\"sender\""));
 
         PacketEnvelope back = GSON.fromJson(json, PacketEnvelope.class);
         assertEquals("mc.example:25565", back.scope);
+        assertEquals("Example SMP", back.name);
         assertEquals("eunomia:example_replicated", back.channel);
         assertEquals("uuid-1", back.key);
         assertTrue(back.replicated);

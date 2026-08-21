@@ -1,0 +1,202 @@
+@page "/servers/{*Scope}"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
+@inject IServerDirectory Directory
+@inject IServerBlockService BlockService
+@inject NavigationManager Navigation
+
+<PageTitle>@ScopeLabel - Eunomia</PageTitle>
+
+<div class="eu-page">
+    <div class="eu-page-head">
+        <div>
+            <a href="/dashboard" class="eu-back">&larr; Servers</a>
+            <h1>@ScopeLabel</h1>
+            <div class="eu-muted eu-mono">@Scope</div>
+        </div>
+        <button class="eu-btn" @onclick="ReloadAsync" disabled="@loading">Refresh</button>
+    </div>
+
+    @if (detail is null)
+    {
+        <div class="eu-empty">@(loading ? "Loading..." : "Unknown server.")</div>
+    }
+    else
+    {
+        <div class="eu-stat-row">
+            <div class="eu-stat"><span class="eu-stat-value">@detail.Summary.LiveUserCount</span><span class="eu-stat-label">Live users</span></div>
+            <div class="eu-stat"><span class="eu-stat-value">@detail.Summary.UpdateCount</span><span class="eu-stat-label">Updates</span></div>
+            <div class="eu-stat"><span class="eu-stat-value">@detail.TotalEntries</span><span class="eu-stat-label">Stored entries</span></div>
+            <div class="eu-stat"><span class="eu-stat-value">@(detail.Summary.Online ? "Online" : "Offline")</span><span class="eu-stat-label">Status</span></div>
+        </div>
+
+        <section class="eu-section">
+            <h2>Moderation</h2>
+            <AuthorizeView Policy="@AuthorizationPolicies.AdminOnly">
+                <Authorized>
+                    @if (isBlocked)
+                    {
+                        <div class="eu-alert eu-alert-danger">
+                            Blocked@(string.IsNullOrEmpty(blockReason) ? string.Empty : $": {blockReason}")
+                        </div>
+                        <button class="eu-btn eu-btn-primary" @onclick="UnblockAsync" disabled="@busy">Unblock server</button>
+                    }
+                    else
+                    {
+                        <div class="eu-block-form">
+                            <input class="eu-input" placeholder="Reason (optional)" @bind="reasonInput" />
+                            <button class="eu-btn eu-btn-danger" @onclick="BlockAsync" disabled="@busy">Block server</button>
+                        </div>
+                    }
+                </Authorized>
+                <NotAuthorized>
+                    @* Moderators keep read-only visibility of block status; only Admins can change it. *@
+                    @if (isBlocked)
+                    {
+                        <div class="eu-alert eu-alert-danger">
+                            Blocked@(string.IsNullOrEmpty(blockReason) ? string.Empty : $": {blockReason}")
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="eu-muted">This server is not blocked.</div>
+                    }
+                    <div class="eu-muted">Blocking requires an administrator.</div>
+                </NotAuthorized>
+            </AuthorizeView>
+        </section>
+
+        <section class="eu-section">
+            <h2>Channels</h2>
+            @if (detail.Channels.Count == 0)
+            {
+                <div class="eu-muted">No stored channels.</div>
+            }
+            else
+            {
+                <table class="eu-table">
+                    <thead><tr><th>Channel</th><th class="eu-num">Entries</th></tr></thead>
+                    <tbody>
+                        @foreach (ChannelStat channel in detail.Channels)
+                        {
+                            <tr><td class="eu-mono">@channel.Channel</td><td class="eu-num">@channel.EntryCount</td></tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+
+        <section class="eu-section">
+            <div class="eu-section-head">
+                <h2>Logs</h2>
+                <div class="eu-log-filters">
+                    <select class="eu-input" @bind="levelFilter">
+                        <option value="">All levels</option>
+                        <option value="Information">Information</option>
+                        <option value="Warning">Warning</option>
+                        <option value="Error">Error</option>
+                        <option value="Fatal">Fatal</option>
+                    </select>
+                    <select class="eu-input" @bind="logLimit">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="250">250</option>
+                    </select>
+                    <button class="eu-btn" @onclick="LoadLogsAsync" disabled="@loading">Apply</button>
+                </div>
+            </div>
+            @if (logs.Count == 0)
+            {
+                <div class="eu-muted">No log entries.</div>
+            }
+            else
+            {
+                <div class="eu-logs">
+                    @foreach (ServerLogRecord entry in logs)
+                    {
+                        <div class="eu-log-line">
+                            <span class="eu-log-time">@entry.Timestamp.ToString("MM-dd HH:mm:ss")</span>
+                            <span class="eu-log-level eu-level-@entry.Level.ToLowerInvariant()">@entry.Level</span>
+                            <span class="eu-log-msg">@entry.Message</span>
+                            @if (!string.IsNullOrEmpty(entry.Exception))
+                            {
+                                <pre class="eu-log-ex">@entry.Exception</pre>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Scope { get; set; }
+
+    private ServerDetail? detail;
+    private IReadOnlyList<ServerLogRecord> logs = [];
+    private string levelFilter = string.Empty;
+    private int logLimit = 100;
+    private string reasonInput = string.Empty;
+    private bool isBlocked;
+    private string? blockReason;
+    private bool loading;
+    private bool busy;
+
+    private string ScopeLabel => detail?.Summary.Name is { Length: > 0 } name ? name : Scope ?? "Server";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        if (string.IsNullOrEmpty(Scope))
+        {
+            return;
+        }
+
+        loading = true;
+        detail = await Directory.GetAsync(Scope);
+        isBlocked = BlockService.IsBlocked(Scope);
+        blockReason = detail?.Summary.BlockReason;
+        await LoadLogsAsync();
+        loading = false;
+    }
+
+    private async Task LoadLogsAsync()
+    {
+        if (string.IsNullOrEmpty(Scope))
+        {
+            return;
+        }
+
+        logs = await Directory.GetLogsAsync(Scope, string.IsNullOrEmpty(levelFilter) ? null : levelFilter, logLimit);
+    }
+
+    private async Task BlockAsync()
+    {
+        if (string.IsNullOrEmpty(Scope))
+        {
+            return;
+        }
+
+        busy = true;
+        await BlockService.BlockAsync(Scope, string.IsNullOrWhiteSpace(reasonInput) ? null : reasonInput);
+        reasonInput = string.Empty;
+        await ReloadAsync();
+        busy = false;
+    }
+
+    private async Task UnblockAsync()
+    {
+        if (string.IsNullOrEmpty(Scope))
+        {
+            return;
+        }
+
+        busy = true;
+        await BlockService.UnblockAsync(Scope);
+        await ReloadAsync();
+        busy = false;
+    }
+}

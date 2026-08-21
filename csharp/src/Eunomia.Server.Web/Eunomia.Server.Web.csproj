@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Eunomia.Server.Api\Eunomia.Server.Api.csproj" />
+    <ProjectReference Include="..\Eunomia.Server.Authentication\Eunomia.Server.Authentication.csproj" />
+    <ProjectReference Include="..\Eunomia.Server.Data\Eunomia.Server.Data.csproj" />
   </ItemGroup>
 
 </Project>

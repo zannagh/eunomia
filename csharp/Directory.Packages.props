@@ -9,6 +9,9 @@
 
     <!-- EF Core -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+    <!-- Pinned so the runtime unifies to 10.0.10: Npgsql floors Relational at 10.0.4 and the base
+         EF Core package doesn't pull Relational, so without this the app would run against 10.0.4. -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />

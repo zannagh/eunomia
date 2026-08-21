@@ -4,7 +4,8 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Eunomia.Server.Core.Storage;
-using Microsoft.Extensions.Logging.Abstractions;
+using Eunomia.Server.Data.Storage;
+using Eunomia.Server.Tests.TestSupport;
 using Xunit.Abstractions;
 
 namespace Eunomia.Server.Tests.Benchmarks;
@@ -13,30 +14,28 @@ namespace Eunomia.Server.Tests.Benchmarks;
 /// Not strict assertions of a target number (CI hardware varies too much for that) - these report
 /// wall-clock timings for the store's hot paths to the test output, so a regression is visible by
 /// eye across runs/PRs. The concurrent stress test additionally asserts correctness under load.
+/// Backed by an in-process SQLite database to keep the benchmark self-contained.
 /// </summary>
-public class KeyedPacketStoreBenchmarks : IDisposable
+public class PgKeyedPacketStoreBenchmarks : IDisposable
 {
     private readonly ITestOutputHelper _output;
-    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "eunomia-bench-" + Guid.NewGuid());
+    private readonly SqliteDbContextFactory _factory = new();
 
-    public KeyedPacketStoreBenchmarks(ITestOutputHelper output)
+    public PgKeyedPacketStoreBenchmarks(ITestOutputHelper output)
     {
         _output = output;
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_dataDir))
-        {
-            Directory.Delete(_dataDir, recursive: true);
-        }
+        _factory.Dispose();
     }
 
     [Fact]
     public void Benchmark_SinglePut_LatencyPercentiles()
     {
         const int iterations = 500;
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = JsonDocument.Parse("""{"value":"latency"}""").RootElement;
         double[] microsPerOp = new double[iterations];
 
@@ -60,7 +59,7 @@ public class KeyedPacketStoreBenchmarks : IDisposable
     {
         const int entryCount = 500;
         const int iterations = 500;
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = JsonDocument.Parse("""{"value":"snapshot"}""").RootElement;
         for (int i = 0; i < entryCount; i++)
         {
@@ -90,7 +89,7 @@ public class KeyedPacketStoreBenchmarks : IDisposable
     public void Benchmark_PutThenSnapshot_RoundtripLatency()
     {
         const int iterations = 500;
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = JsonDocument.Parse("""{"value":"benchmark"}""").RootElement;
 
         Stopwatch putWatch = Stopwatch.StartNew();
@@ -119,7 +118,7 @@ public class KeyedPacketStoreBenchmarks : IDisposable
     public void Benchmark_SequentialPut_Throughput()
     {
         const int iterations = 2_000;
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = JsonDocument.Parse("""{"value":"throughput"}""").RootElement;
 
         Stopwatch watch = Stopwatch.StartNew();
@@ -130,7 +129,7 @@ public class KeyedPacketStoreBenchmarks : IDisposable
 
         watch.Stop();
 
-        ReportTimings("Sequential Put (includes file persistence)", iterations, watch.Elapsed);
+        ReportTimings("Sequential Put (includes DB persistence)", iterations, watch.Elapsed);
     }
 
     [Fact]
@@ -142,7 +141,7 @@ public class KeyedPacketStoreBenchmarks : IDisposable
         const int putsPerTask = 50;
         const int totalPuts = writerTasks * putsPerTask;
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         Stopwatch watch = Stopwatch.StartNew();
         await Task.WhenAll(Enumerable.Range(0, writerTasks).Select(taskIndex => Task.Run(() =>
@@ -156,9 +155,9 @@ public class KeyedPacketStoreBenchmarks : IDisposable
         })));
         watch.Stop();
 
-        // Consistency check: a fresh instance reading the file back must see every write, proving
-        // the per-(scope,channel) lock + atomic temp-file-then-rename swap held under contention.
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        // Consistency check: a fresh instance reading the database back must see every write, proving
+        // the per-(scope,channel) write lock held under contention.
+        PgKeyedPacketStore reloaded = new(_factory);
         StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
         Assert.Equal(totalPuts, snapshot.Entries.Count);
 

@@ -6,8 +6,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Auth tests exercise ASP.NET Core authorization/DI/config types from the shared framework. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Eunomia.Server.Core\Eunomia.Server.Core.csproj" />
     <ProjectReference Include="..\Eunomia.Server.Api\Eunomia.Server.Api.csproj" />
+    <ProjectReference Include="..\Eunomia.Server.Authentication\Eunomia.Server.Authentication.csproj" />
+    <ProjectReference Include="..\Eunomia.Server.Data\Eunomia.Server.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Storage tests exercise PgKeyedPacketStore against an in-process SQLite database (same EF model,
+         real SQL/constraints) so the lossless round-trip is proven without a live Postgres. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
 
   <ItemGroup>

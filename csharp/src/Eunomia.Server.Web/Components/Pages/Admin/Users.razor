@@ -1,0 +1,109 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+@inject IUserAdminService UserAdmin
+@inject ICurrentUserService CurrentUserService
+
+<PageTitle>Users - Eunomia</PageTitle>
+
+<div class="eu-page">
+    <div class="eu-page-head">
+        <h1>User management</h1>
+        <button class="eu-btn" @onclick="LoadAsync" disabled="@loading">Refresh</button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="eu-alert eu-alert-danger">@error</div>
+    }
+
+    @if (users.Count == 0)
+    {
+        <div class="eu-empty">@(loading ? "Loading..." : "No users.")</div>
+    }
+    else
+    {
+        <table class="eu-table">
+            <thead>
+                <tr><th>User</th><th>Identifier</th><th>Linked</th><th>Role</th></tr>
+            </thead>
+            <tbody>
+                @foreach (UserAdminRecord row in users)
+                {
+                    <tr>
+                        <td>@row.DisplayName</td>
+                        <td class="eu-mono eu-muted">@row.Identifier</td>
+                        <td>
+                            @if (row.Links.Count == 0)
+                            {
+                                <span class="eu-muted">—</span>
+                            }
+                            else
+                            {
+                                @foreach (UserAdminLink link in row.Links)
+                                {
+                                    <span class="eu-chip">@link.Provider: @(string.IsNullOrEmpty(link.Handle) ? link.ExternalId : link.Handle)</span>
+                                }
+                            }
+                        </td>
+                        <td>
+                            <select class="eu-input" value="@row.Role"
+                                    @onchange="@(e => OnRoleChangedAsync(row.Id, e.Value?.ToString()))"
+                                    disabled="@busy">
+                                @foreach (IdentityRole role in Roles)
+                                {
+                                    <option value="@role" selected="@(role == row.Role)">@role</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<UserAdminRecord> users = [];
+    private bool loading;
+    private bool busy;
+    private string? error;
+
+    private static readonly IdentityRole[] Roles =
+        [IdentityRole.Guest, IdentityRole.User, IdentityRole.Moderator, IdentityRole.Admin];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        users = await UserAdmin.ListUsersAsync();
+        loading = false;
+    }
+
+    private async Task OnRoleChangedAsync(Guid userId, string? roleName)
+    {
+        if (!Enum.TryParse(roleName, out IdentityRole role))
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+        try
+        {
+            User actingAdmin = await CurrentUserService.GetCurrentUserAsync();
+            await UserAdmin.SetRoleAsync(userId, role, actingAdmin);
+            await LoadAsync();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            error = "You are not authorized to change roles.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

@@ -2,6 +2,7 @@
 // See License in the project root for license information.
 
 using System.Collections.Concurrent;
+using System.Net.WebSockets;
 using Eunomia.Server.Core.Clients;
 
 namespace Eunomia.Server.Core.Communication;
@@ -14,6 +15,9 @@ public class ConnectionManager
 {
     private const int MaxConnectionsPerScope = 500;
     private const int MaxConnectionsPerIp = 20;
+
+    /// <summary>How long to wait for a peer's close frame before abandoning a graceful close.</summary>
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, EunomiaClient>> _clientsByScope = new();
     private readonly ConcurrentDictionary<string, int> _connectionsByIp = new();
@@ -72,6 +76,45 @@ public class ConnectionManager
     }
 
     /// <summary>
+    /// Returns the number of live websocket sessions in <paramref name="scope"/>.
+    /// </summary>
+    public int LiveCount(string scope)
+    {
+        return _clientsByScope.TryGetValue(scope, out ConcurrentDictionary<Guid, EunomiaClient>? scopeClients)
+            ? scopeClients.Count
+            : 0;
+    }
+
+    /// <summary>
+    /// Returns the scopes that currently have at least one live websocket session.
+    /// </summary>
+    public IReadOnlyCollection<string> ActiveScopes()
+    {
+        return _clientsByScope
+            .Where(pair => !pair.Value.IsEmpty)
+            .Select(pair => pair.Key)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Closes every live socket in <paramref name="scope"/> with the given status and reason, used to
+    /// evict connections when a scope is blocked. Best-effort; dead sockets are removed rather than
+    /// throwing.
+    /// </summary>
+    public async Task CloseScopeAsync(string scope, WebSocketCloseStatus status, string reason)
+    {
+        if (!_clientsByScope.TryGetValue(scope, out ConcurrentDictionary<Guid, EunomiaClient>? scopeClients))
+        {
+            return;
+        }
+
+        // Close every client concurrently and under a deadline: CloseAsync waits for the peer's close
+        // frame, so one unresponsive relay would otherwise stall the admin request that triggered the
+        // block and hold up eviction of every remaining socket in the scope.
+        await Task.WhenAll(scopeClients.Values.Select(client => CloseClientAsync(scopeClients, client, status, reason)));
+    }
+
+    /// <summary>
     /// Sends <paramref name="json"/> to every connected client in <paramref name="scope"/>, except
     /// <paramref name="exceptId"/> if given. Dead sockets are removed rather than throwing.
     /// </summary>
@@ -97,6 +140,32 @@ public class ConnectionManager
             {
                 scopeClients.TryRemove(client.Id, out _);
             }
+        }
+    }
+
+    private static async Task CloseClientAsync(
+        ConcurrentDictionary<Guid, EunomiaClient> scopeClients,
+        EunomiaClient client,
+        WebSocketCloseStatus status,
+        string reason)
+    {
+        try
+        {
+            if (client.Socket is { State: WebSocketState.Open })
+            {
+                using CancellationTokenSource timeout = new(CloseTimeout);
+                await client.Socket.CloseAsync(status, reason, timeout.Token);
+            }
+        }
+        catch (Exception)
+        {
+            // Deliberately swallowed: a socket that will not close cleanly is still being evicted.
+        }
+        finally
+        {
+            // Deregister on every path. Leaving successfully-closed clients registered kept a blocked
+            // scope reporting as live until its receive loop happened to notice.
+            scopeClients.TryRemove(client.Id, out _);
         }
     }
 }

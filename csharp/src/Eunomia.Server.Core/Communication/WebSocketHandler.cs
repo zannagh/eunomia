@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Serialization;
+using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Core.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -49,12 +50,19 @@ public class WebSocketHandler
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "WebSocket session for {ClientId} ended abnormally", client.Id);
+            using (_logger.BeginScope(ServerScope.Property(client.Scope)))
+            {
+                _logger.LogWarning(ex, "WebSocket session for {ClientId} on {Scope} ended abnormally", client.Id, client.Scope);
+            }
         }
         finally
         {
             _connectionManager.OnConnectionRemoved(client.Scope, client.Id, client.RemoteIp);
             client.Socket.Dispose();
+            using (_logger.BeginScope(ServerScope.Property(client.Scope)))
+            {
+                _logger.LogInformation("Websocket disconnected for {Scope} ({ClientId})", client.Scope, client.Id);
+            }
         }
     }
 

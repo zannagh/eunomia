@@ -5,11 +5,14 @@ using System.ComponentModel;
 using System.Text.Json;
 using Eunomia.Server.Api.Models;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Logging;
 using Eunomia.Server.Core.Serialization;
+using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Core.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace Eunomia.Server.Api.Controllers;
 
@@ -17,7 +20,7 @@ namespace Eunomia.Server.Api.Controllers;
 /// Accepts plain and keyed packet notifications from a client's REST fallback transport and
 /// relays them to the rest of that client's scope over websocket. Requires the sender to already
 /// hold a live websocket session for the target scope, so REST puts cannot be spoofed by an
-/// identity that has never connected.
+/// identity that has never connected. A blocked scope is refused with 403 before any store/relay.
 /// </summary>
 [ApiController]
 [Route("api/packets")]
@@ -29,11 +32,19 @@ public class PacketController : ControllerBase
 
     private readonly ConnectionManager _connectionManager;
     private readonly IKeyedPacketStore _store;
+    private readonly IServerBlockService _blockService;
+    private readonly ILogger<PacketController> _logger;
 
-    public PacketController(ConnectionManager connectionManager, IKeyedPacketStore store)
+    public PacketController(
+        ConnectionManager connectionManager,
+        IKeyedPacketStore store,
+        IServerBlockService blockService,
+        ILogger<PacketController> logger)
     {
         _connectionManager = connectionManager;
         _store = store;
+        _blockService = blockService;
+        _logger = logger;
     }
 
     [HttpPut("plain")]
@@ -47,6 +58,11 @@ public class PacketController : ControllerBase
 
         string frame = JsonSerializer.Serialize(WsFrame<PacketEnvelope>.Envelope(env), EunomiaJsonOptions.Wire);
         await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
+        using (_logger.BeginScope(ServerScope.Property(env.Scope)))
+        {
+            _logger.LogDebug("Relayed plain packet on {Channel} for {Scope}", LogSafe.Value(env.Channel), LogSafe.Value(env.Scope));
+        }
+
         return Ok();
     }
 
@@ -69,6 +85,15 @@ public class PacketController : ControllerBase
 
         string frame = JsonSerializer.Serialize(WsFrame<PacketEnvelope>.Envelope(env), EunomiaJsonOptions.Wire);
         await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
+        using (_logger.BeginScope(ServerScope.Property(env.Scope)))
+        {
+            _logger.LogDebug(
+                "Stored keyed packet {Key} on {Channel} for {Scope}",
+                LogSafe.Value(env.Key),
+                LogSafe.Value(env.Channel),
+                LogSafe.Value(env.Scope));
+        }
+
         return Ok();
     }
 
@@ -79,6 +104,20 @@ public class PacketController : ControllerBase
         if (Request.ContentLength is > MaxBodyBytes)
         {
             return StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        if (_blockService.IsBlocked(env.Scope))
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        // These land in varchar(512) columns; reject over-long values here rather than letting the
+        // insert fail with a DbUpdateException after the packet has already been relayed.
+        if (!StorageLimits.IsWithinLimit(env.Scope)
+            || !StorageLimits.IsWithinLimit(env.Channel)
+            || !StorageLimits.IsWithinLimit(env.Key))
+        {
+            return BadRequest($"Scope, channel, and key must each be at most {StorageLimits.MaxIdentifierLength} characters.");
         }
 
         if (!Guid.TryParse(env.Sender, out sender))

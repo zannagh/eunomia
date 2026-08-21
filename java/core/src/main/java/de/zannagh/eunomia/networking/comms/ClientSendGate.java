@@ -18,21 +18,22 @@ import java.util.List;
  * <p>Eunomia does not blindly emit custom payloads: sending an unknown channel to a vanilla (or
  * otherwise non-Eunomia) server can get the client disconnected. So a gated packet is held until
  * {@link CommunicationManager#serverCapabilities() serverCapabilities()} resolves. Once it resolves
- * {@link ServerCapabilities#isPresent() present} the queue is flushed in submission order; if it
- * resolves absent - the server does not run Eunomia, or the client's probe timed out
- * ({@link CommunicationManager#markServerProbeTimedOut()}) - the queue is dropped for the rest of the
- * connection. {@link #reset()} clears this state so a reconnect always re-tests the new server.</p>
+ * {@link ServerCapabilities#isPresent() present} the queue is flushed in submission order.</p>
  *
- * <p>Resolution is entirely event-driven: a single persistent
- * {@link ServerCapabilities#onResolved(java.util.function.Consumer) onResolved} listener flushes or
- * drops the queue. There is no background timer here because Eunomia's own client wiring already
- * concludes the probe (an ACK, or {@code markServerProbeTimedOut} after a timeout), and both outcomes
- * fire that listener. A queue can therefore only linger until the next resolution, {@link #reset()},
- * or the next {@link CommunicationManager#beginServerProbe() probe} - never indefinitely across a
- * connection's lifetime.</p>
+ * <p><b>External relay fallback.</b> When the joined server does <em>not</em> run Eunomia, the client's
+ * {@code ClientTransportSelector} may swap the Minecraft transport for the external relay
+ * ({@code ExternalClientTransport}). That decision is asynchronous (it needs the capability probe to
+ * resolve <em>absent</em> first, then a reachability check), so an absent resolution does NOT drop the
+ * queue immediately - the queue is <em>parked</em> until the fallback decision lands:
+ * {@link #setExternalTransportActive(boolean) setExternalTransportActive(true)} flushes it to the relay,
+ * and {@link #concludeNoRelay()} (no opt-in / unreachable / hard-blocked) drops it. This is what lets a
+ * config sent on join actually reach the relay instead of being dropped in the gap between "server is not
+ * Eunomia" and "relay is up". Once the relay is active, sends dispatch to it regardless of the (absent)
+ * Minecraft capability - the relay is a valid, opted-in destination.</p>
  *
- * <p>All state is guarded by {@link #MONITOR}, and the flush runs while holding it, so a later
- * fast-path send can never overtake packets that were queued before the probe resolved.</p>
+ * <p>{@link #reset()} clears this state so a reconnect always re-tests the new server. All state is
+ * guarded by {@link #MONITOR}, and every flush runs while holding it, so a later fast-path send can never
+ * overtake packets queued before the decision landed.</p>
  */
 final class ClientSendGate {
 
@@ -40,49 +41,90 @@ final class ClientSendGate {
 
     /** Guards all mutable gate state below. */
     private static final Object MONITOR = new Object();
-    /** Sends queued while the capability decision is still pending, flushed in submission order. */
+    /** Sends queued while the capability/fallback decision is still pending, flushed in submission order. */
     private static final Deque<Runnable> pending = new ArrayDeque<>();
     /** Whether the persistent {@code onResolved} listener has been attached (attach once, ever). */
     private static boolean installed = false;
+    /** Whether the external relay transport is the active send path (deliver regardless of MC capability). */
+    private static boolean externalActive = false;
+    /** Whether the fallback decision concluded "no relay" (server not Eunomia and no usable relay) - drop. */
+    private static boolean concludedNoRelay = false;
 
     private ClientSendGate() {
     }
 
     /**
-     * Sends {@code data} on {@code type} honoring the capability gate: immediately if the server is
-     * already known to be eligible, never if it is known to be ineligible, or queued (to flush when the
-     * probe resolves) while the decision is still pending.
+     * Sends {@code data} on {@code type} honoring the gate: immediately if a destination is already known
+     * (the server runs Eunomia, or the relay is active), dropped if the connection concluded there is no
+     * eligible destination, or queued (to flush when the decision lands) while it is still pending.
      *
-     * @param requireChannelSupport when true, the server must also declare a receiver for this exact
-     *                              channel (the {@link SendOptions#IF_SERVER_SUPPORTS} contract), not
-     *                              merely run Eunomia.
+     * @param requireChannelSupport when true, an Eunomia server must also declare a receiver for this exact
+     *                              channel (the {@link SendOptions#IF_SERVER_SUPPORTS} contract). Ignored on
+     *                              the relay path, which accepts any channel.
      */
     static <T> void send(PacketType<T> type, T data, boolean requireChannelSupport) {
         synchronized (MONITOR) {
             ensureInstalled();
             ServerCapabilities caps = CommunicationManager.serverCapabilities();
-            if (caps.isResolved()) {
+            if (externalActive || caps.isPresent() || (caps.isResolved() && concludedNoRelay)) {
+                // A destination is decided (relay / Eunomia server), or the connection concluded there is
+                // none: dispatchOrDrop resolves which. Either way, do not queue.
                 dispatchOrDrop(type, data, requireChannelSupport, caps);
                 return;
             }
-            // Undecided: queue, re-checking eligibility when the probe actually resolves.
+            // Undecided (probe pending, or absent while the fallback decision is still in flight): park.
             pending.add(() -> dispatchOrDrop(type, data, requireChannelSupport,
                     CommunicationManager.serverCapabilities()));
         }
     }
 
-    /** Forget the current connection's queued sends so a reconnect never reuses a prior decision. */
+    /** Forget the current connection's queued sends and fallback state so a reconnect starts clean. */
     static void reset() {
         synchronized (MONITOR) {
             pending.clear();
+            externalActive = false;
+            concludedNoRelay = false;
         }
     }
 
-    /** Sends {@code data} now if {@code caps} deems it eligible, otherwise drops it. Call under {@link #MONITOR}. */
+    /**
+     * Marks the external relay transport active (or not) and flushes the parked queue. Called by the client
+     * transport selector once it has installed (or torn down) the relay transport. Activating delivers every
+     * parked send to the relay; deactivating re-evaluates them (delivered if the server turned out to run
+     * Eunomia, dropped otherwise).
+     */
+    static void setExternalTransportActive(boolean active) {
+        synchronized (MONITOR) {
+            externalActive = active;
+            concludedNoRelay = false;
+            flush();
+        }
+    }
+
+    /**
+     * Marks the fallback decision as "no relay" - the server does not run Eunomia and no relay is usable
+     * (not opted in, unreachable, or hard-blocked). Drops the parked queue and makes subsequent sends drop
+     * immediately for the rest of the connection.
+     */
+    static void concludeNoRelay() {
+        synchronized (MONITOR) {
+            externalActive = false;
+            concludedNoRelay = true;
+            flush();
+        }
+    }
+
+    /** Sends {@code data} now if a destination is eligible, otherwise drops it. Call under {@link #MONITOR}. */
     private static <T> void dispatchOrDrop(PacketType<T> type, T data, boolean requireChannelSupport,
                                            ServerCapabilities caps) {
+        if (externalActive) {
+            // The relay is the destination and accepts any channel; the MC capability is irrelevant here.
+            CommunicationManager.sendToServerNow(type, data);
+            return;
+        }
         if (!caps.isPresent()) {
-            LOGGER.debug("Suppressing serverbound {}: server does not run Eunomia.", type.channelKey());
+            LOGGER.debug("Suppressing serverbound {}: server does not run Eunomia and no relay is active.",
+                    type.channelKey());
             return;
         }
         if (requireChannelSupport && !caps.supports(type)) {
@@ -92,30 +134,35 @@ final class ClientSendGate {
         CommunicationManager.sendToServerNow(type, data);
     }
 
-    /** Attaches the persistent flush listener the first time a gated send is made. Call under {@link #MONITOR}. */
+    /** Attaches the persistent resolution listener the first time a gated send is made. Call under {@link #MONITOR}. */
     private static void ensureInstalled() {
         if (installed) {
             return;
         }
         installed = true;
-        // Listeners persist across reconnects and fire again for each new resolution (present or absent),
-        // so this single registration both flushes on ACK and drops on timeout, connection after connection.
-        CommunicationManager.serverCapabilities().onResolved(caps -> flush());
+        // Deliver on a "present" resolution; on an "absent" resolution, only flush once a destination is
+        // decided (relay active) or the connection concluded no relay - otherwise park until the selector's
+        // asynchronous fallback decision lands, so a join-time send is not dropped in that window.
+        CommunicationManager.serverCapabilities().onResolved(caps -> {
+            synchronized (MONITOR) {
+                if (caps.isPresent() || externalActive || concludedNoRelay) {
+                    flush();
+                }
+            }
+        });
     }
 
-    /** Drains the pending queue when the probe resolves: each send re-checks its own eligibility. */
+    /** Drains the pending queue: each send re-checks its own eligibility. Call under {@link #MONITOR}. */
     private static void flush() {
-        synchronized (MONITOR) {
-            if (pending.isEmpty()) {
-                return;
-            }
-            // Snapshot then clear before running: a queued send that itself enqueues (it should not)
-            // cannot corrupt the iteration, and the flush stays strictly ordered under the lock.
-            List<Runnable> batch = new ArrayList<>(pending);
-            pending.clear();
-            for (Runnable action : batch) {
-                action.run();
-            }
+        if (pending.isEmpty()) {
+            return;
+        }
+        // Snapshot then clear before running: a queued send that itself enqueues (it should not) cannot
+        // corrupt the iteration, and the flush stays strictly ordered under the lock.
+        List<Runnable> batch = new ArrayList<>(pending);
+        pending.clear();
+        for (Runnable action : batch) {
+            action.run();
         }
     }
 }

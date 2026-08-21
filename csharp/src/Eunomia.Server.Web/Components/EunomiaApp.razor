@@ -1,0 +1,32 @@
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <meta name="theme-color" content="#16162a" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="css/eunomia.css" />
+    <HeadOutlet />
+    <title>Eunomia</title>
+</head>
+<body>
+    <Routes />
+
+    <div id="blazor-error-ui">
+        <span>An error occurred.</span>
+        <a href="javascript:location.reload()">Reload</a>
+        <a class="dismiss" href="javascript:void(0)"
+           onclick="document.getElementById('blazor-error-ui').style.display='none'">&times;</a>
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

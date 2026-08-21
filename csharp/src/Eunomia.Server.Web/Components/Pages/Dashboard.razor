@@ -1,0 +1,109 @@
+@page "/"
+@page "/dashboard"
+@rendermode InteractiveServer
+@attribute [Authorize(Policy = AuthorizationPolicies.StaffOnly)]
+@implements IDisposable
+@using Serilog
+@inject IServerDirectory Directory
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard - Eunomia</PageTitle>
+
+<div class="eu-page">
+    <div class="eu-page-head">
+        <h1>Servers</h1>
+        <div class="eu-page-actions">
+            <span class="eu-muted">@servers.Count total</span>
+            <button class="eu-btn" @onclick="RefreshAsync" disabled="@loading">
+                @(loading ? "Refreshing..." : "Refresh")
+            </button>
+        </div>
+    </div>
+
+    @if (servers.Count == 0)
+    {
+        <div class="eu-empty">No servers have connected yet.</div>
+    }
+    else
+    {
+        <div class="eu-grid">
+            @foreach (ServerSummary server in servers)
+            {
+                <a class="eu-card" href="@DetailHref(server.Scope)">
+                    <div class="eu-card-head">
+                        <span class="eu-card-title">@(string.IsNullOrEmpty(server.Name) ? server.Scope : server.Name)</span>
+                        <span class="eu-dot @(server.Online ? "eu-dot-on" : "eu-dot-off")" title="@(server.Online ? "Online" : "Offline")"></span>
+                    </div>
+                    <div class="eu-card-scope">@server.Scope</div>
+                    @if (server.IsBlocked)
+                    {
+                        <span class="eu-badge eu-badge-danger">Blocked</span>
+                    }
+                    <div class="eu-card-stats">
+                        <span><strong>@server.LiveUserCount</strong> live</span>
+                        <span><strong>@server.UpdateCount</strong> updates</span>
+                    </div>
+                    <div class="eu-card-foot">Last seen @LastSeen(server)</div>
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<ServerSummary> servers = [];
+    private bool loading;
+    private PeriodicTimer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Created before the first await: if the circuit drops during RefreshAsync, Dispose still has a
+        // timer to stop, instead of the loop going on to create one that nothing ever disposes.
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        await RefreshAsync();
+        _ = AutoRefreshLoopAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        servers = await Directory.ListAsync();
+        loading = false;
+    }
+
+    // scope may contain ':' and '/', so a catch-all route param on the detail page consumes them; the
+    // href is built with literal segments (encoded slashes are rejected by the server before routing).
+    private static string DetailHref(string scope) => $"/servers/{scope}";
+
+    private static string LastSeen(ServerSummary server) =>
+        server.LastSeen == default ? "never" : server.LastSeen.ToString("yyyy-MM-dd HH:mm 'UTC'");
+
+    private async Task AutoRefreshLoopAsync()
+    {
+        if (timer is not { } refreshTimer)
+        {
+            return;
+        }
+
+        try
+        {
+            while (await refreshTimer.WaitForNextTickAsync())
+            {
+                servers = await Directory.ListAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The component was disposed mid-tick; nothing to do.
+        }
+        catch (Exception ex)
+        {
+            // Nothing observes this task, so an unhandled throw would silently stop auto-refresh and
+            // leave the dashboard showing stale data with no indication.
+            Log.Error(ex, "[Dashboard] Auto-refresh stopped");
+        }
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

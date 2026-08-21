@@ -3,10 +3,15 @@
 
 using System.Text.Json;
 using Eunomia.Server.Api.Middlewares;
+using Eunomia.Server.Authentication;
+using Eunomia.Server.Authentication.Controllers;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
-using Eunomia.Server.Core.Storage;
 using Eunomia.Server.Core.Telemetry;
+using Eunomia.Server.Data.DependencyInjection;
+using Eunomia.Server.Data.Logging;
+using Eunomia.Server.Web.Components;
+using Microsoft.Extensions.Hosting;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
@@ -26,32 +31,50 @@ public static class EunomiaWebApp
         builder.Host.UseSerilog((context, services, configuration) => configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
-            .WriteTo.Console());
+            .WriteTo.Console()
 
-        ConfigureServices(builder.Services);
+            // Dedicated per-server sink: only events carrying the ServerScope property reach it.
+            .WriteToServerScopeLog(services));
+
+        ConfigureServices(builder.Services, builder.Configuration, builder.Environment);
 
         WebApplication app = builder.Build();
 
+        bool isDevelopment = app.Environment.IsDevelopment();
+        app.Services.MigrateDatabase(isDevelopment);
+        app.Services.InitializeServerBlocking(isDevelopment);
+
+        app.UseStaticFiles();
         app.UseWebSockets();
         app.UseMiddleware<WebSocketMiddleware>();
+        app.UseEunomiaAuthentication();
         app.MapControllers();
+        app.MapRazorComponents<EunomiaApp>().AddInteractiveServerRenderMode();
         app.MapPrometheusScrapingEndpoint();
         app.MapGet("/health", () => Results.Ok("ok"));
 
         app.Run();
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
-        services.AddControllers().AddJsonOptions(options =>
-            options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
+        services.AddControllers()
+            .AddApplicationPart(typeof(AccountController).Assembly)
+            .AddJsonOptions(options =>
+                options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase);
         services.AddHttpClient();
 
-        // Persistence directory is configurable via EUNOMIA_DATA_DIR (default "data"), so a container can
-        // mount a volume and tests can isolate their own dir. Relative paths resolve against the content root.
-        string dataDir = Environment.GetEnvironmentVariable("EUNOMIA_DATA_DIR") ?? "data";
-        services.AddSingleton<IKeyedPacketStore>(serviceProvider =>
-            new KeyedPacketStore(serviceProvider.GetRequiredService<ILogger<KeyedPacketStore>>(), dataDir));
+        // Blazor Server dashboard UI. AddCascadingAuthenticationState + antiforgery are already wired by
+        // AddEunomiaAuthentication, so only the Razor component + interactive server render mode are added.
+        services.AddRazorComponents()
+            .AddInteractiveServerComponents();
+
+        // Persistence is backed by Postgres: the DbContext factory + IKeyedPacketStore are registered here
+        // and migrations are applied on startup (see MigrateDatabase in Main).
+        services.ConfigureDataServices(configuration);
+
+        // Cookie + JWT authentication, the StaffOnly/AdminOnly policies, and OAuth login/link controllers.
+        services.AddEunomiaAuthentication(configuration, environment);
         services.AddSingleton<ConnectionManager>();
         services.AddSingleton<WebSocketHandler>();
         services.AddSingleton<MojangProfileClient>();
