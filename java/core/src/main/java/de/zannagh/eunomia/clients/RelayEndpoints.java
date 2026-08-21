@@ -3,6 +3,12 @@ package de.zannagh.eunomia.clients;
 import de.zannagh.eunomia.common.ApiVersion;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpRequest;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.UUID;
 
 /**
  * Derives the concrete REST and WebSocket URIs from a configured relay base address. A bare host is assumed to be
@@ -45,5 +51,27 @@ final class RelayEndpoints {
 
     static URI ws(String base, String path) {
         return URI.create(base.replaceFirst("^http", "ws") + path);
+    }
+
+    /**
+     * The receive-socket handshake URI. {@code /ws} itself stays unversioned; the relay reads the client's API
+     * version off the query string and treats a missing {@code v} as a legacy client, closing the socket with
+     * {@link RelayProtocol#UNSUPPORTED_VERSION_CLOSE} when it cannot serve the one it is given.
+     */
+    static URI handshake(String base, UUID playerId, String scope, String name) {
+        Charset utf8 = StandardCharsets.UTF_8;
+        return ws(base, "/ws?id=" + playerId
+                + "&scope=" + URLEncoder.encode(scope, utf8)
+                + "&name=" + URLEncoder.encode(name == null ? "" : name, utf8)
+                + "&v=" + ApiVersion.CURRENT);
+    }
+
+    /** A {@code PUT} of one already-serialized envelope to a versioned packet endpoint. */
+    static HttpRequest packetPut(String base, String path, String json) {
+        return HttpRequest.newBuilder(api(base, path))
+                .timeout(Duration.ofSeconds(10))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(json))
+                .build();
     }
 }

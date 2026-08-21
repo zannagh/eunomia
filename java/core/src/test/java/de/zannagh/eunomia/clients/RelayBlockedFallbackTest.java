@@ -11,17 +11,37 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Unit-covers the "blocked" fallback contract of {@link ExternalServerClient} without a live relay: a hard block
- * (HTTP 403 on a REST send, or a WebSocket close with code 1008/policy-violation) must stop the client and fire
- * the fallback callback exactly once, while the benign 409 ("no live socket"), other 5xx errors, and ordinary
- * close codes must leave the client running and un-blocked so it keeps retrying/reconnecting.
+ * Unit-covers the terminal-outcome contract of {@link ExternalServerClient} without a live relay. Two outcomes
+ * stop the client and fire the fallback callback exactly once: a hard block (HTTP 403 on a REST send, or a
+ * WebSocket close with code 1008/policy-violation) and an unsupported API version (WebSocket close with code
+ * 4001). The benign 409 ("no live socket"), other 5xx errors, and ordinary close codes must leave the client
+ * running and un-blocked so it keeps retrying/reconnecting.
  */
 class RelayBlockedFallbackTest {
 
     private static ExternalServerClient client(AtomicInteger blockedCalls) {
-        return new ExternalServerClient(
+        return client(blockedCalls, new AtomicInteger());
+    }
+
+    /**
+     * A client whose connect action only counts attempts, so {@code start()} opens no real socket and a scheduled
+     * reconnect is observable as a second count rather than as a background dial at a dead address.
+     */
+    private static ExternalServerClient client(AtomicInteger blockedCalls, AtomicInteger connectAttempts) {
+        ExternalServerClient client = new ExternalServerClient(
                 "127.0.0.1:1", "mc.example:25565", "Example SMP", UUID.randomUUID(),
                 NOPLogger.NOP_LOGGER, blockedCalls::incrementAndGet);
+        client.connector = connectAttempts::incrementAndGet;
+        return client;
+    }
+
+    /** Waits up to {@code timeoutMs} for {@code counter} to reach {@code target}; returns what it actually saw. */
+    private static int awaitCount(AtomicInteger counter, int target, long timeoutMs) throws InterruptedException {
+        long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
+        while (counter.get() < target && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        return counter.get();
     }
 
     @Test
@@ -86,5 +106,50 @@ class RelayBlockedFallbackTest {
 
         assertFalse(client.isBlocked(), "non-1008 closes must not block");
         assertEquals(0, blocked.get(), "no fallback on ordinary closes");
+    }
+
+    @Test
+    void wsClose4001IsTerminalAndFallsBackWithoutBeingABlock() {
+        AtomicInteger blocked = new AtomicInteger();
+        AtomicInteger connects = new AtomicInteger();
+        ExternalServerClient client = client(blocked, connects);
+        client.start();
+        assertEquals(1, connects.get(), "start() makes exactly one connect attempt");
+
+        client.handleClose(4001, "unsupported api version");
+
+        assertFalse(client.isRunning(), "an unsupported API version must stop the client, not reconnect");
+        assertEquals(1, blocked.get(), "the fallback to the Minecraft transport fires once");
+        assertFalse(client.isBlocked(),
+                "a version mismatch is not a block - conflating the two would misreport why syncing stopped");
+        assertEquals(1, connects.get(), "no further connect attempt may be scheduled after 4001");
+
+        // A second 4001 (e.g. a late close on an already-dead socket) must not re-fire the fallback.
+        client.handleClose(4001, "unsupported api version");
+        assertEquals(1, blocked.get(), "terminal handling is idempotent");
+    }
+
+    @Test
+    void wsClose4001MatchesTheRelaysUnsupportedVersionCode() {
+        // The mod and the C# relay have to agree on the literal; if this drifts, the mod reconnects forever.
+        assertEquals(4001, RelayProtocol.UNSUPPORTED_VERSION_CLOSE);
+        assertEquals(1008, RelayProtocol.POLICY_VIOLATION_CLOSE);
+        assertEquals(403, RelayProtocol.BLOCKED_STATUS);
+    }
+
+    @Test
+    void anOrdinaryCloseStillSchedulesAReconnect() throws InterruptedException {
+        AtomicInteger blocked = new AtomicInteger();
+        AtomicInteger connects = new AtomicInteger();
+        ExternalServerClient client = client(blocked, connects);
+        client.start();
+
+        client.handleClose(1006, "abnormal");
+
+        assertTrue(client.isRunning(), "an ordinary close keeps the client alive");
+        // The first backoff step is ~1s plus jitter; give it room without making the wait itself the assertion.
+        assertEquals(2, awaitCount(connects, 2, 5000), "a non-terminal close must schedule another connect");
+        assertEquals(0, blocked.get(), "no fallback on an ordinary close");
+        client.stop();
     }
 }

@@ -21,8 +21,14 @@ public record SemanticVersion(
      * Matches the leading {@code major[.minor[.patch]]} of a version string. Everything after it (a
      * {@code -prerelease} tail, a {@code +build} tail, or a loader's {@code +mc-1.21.9-10} suffix) is captured
      * separately and never string-sliced by hand.
+     * <p>
+     * The tail is optional, but a {@code -} or {@code +} separator commits to one: it must be non-empty and
+     * built only from the characters semver allows in prerelease/build identifiers (alphanumerics, {@code .},
+     * {@code -} and {@code +}). A dangling {@code 0.3.0-} or a tail carrying whitespace is a malformed version
+     * string, not a version with an odd suffix, and must not parse into a seemingly valid API segment.
      */
-    private static final Pattern VERSION = Pattern.compile("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:[-+](.*))?$");
+    private static final Pattern VERSION =
+            Pattern.compile("^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:[-+]([0-9A-Za-z.+-]+))?$");
 
     /**
      * Parses a version string into a {@link SemanticVersion}, tolerating the forms actually seen in this project:
@@ -30,7 +36,8 @@ public record SemanticVersion(
      * {@code 0.3.0+mc-1.21.9-10}. Missing minor/patch components default to {@code 0}.
      *
      * @param version The raw version string, may be {@code null}.
-     * @return The parsed version, or {@code null} when {@code version} is null, blank or not version-shaped.
+     * @return The parsed version, or {@code null} when {@code version} is null, blank, not version-shaped, or
+     *     carries an empty/invalid prerelease-or-build tail such as {@code 0.3.0-} or {@code 0.3.0+}.
      */
     public static @Nullable SemanticVersion parse(@Nullable String version) {
         if (version == null) {

@@ -41,7 +41,11 @@ class ApiVersionTest {
 
     @Test
     void failsLoudlyOnMalformedInput() {
-        for (String version : new String[] {null, "", "   ", "not-a-version", "v0.3.0", "x.y.z", "-1.2.0"}) {
+        for (String version : new String[] {
+                null, "", "   ", "not-a-version", "v0.3.0", "x.y.z", "-1.2.0",
+                // A dangling separator is a broken -PsemVer, not a version with an empty tail. Accepting it
+                // would hand back a plausible-looking "0.3" segment and hide the misconfiguration.
+                "0.3.0-", "0.3.0+", "0.3.0- ", "0.3.0-alpha 2", "0.3.0+build 7", "0.3.0-alpha;2"}) {
             IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> ApiVersion.of(version));
             assertTrue(error.getMessage().contains("-PsemVer"), "message should name -PsemVer: " + error.getMessage());
         }
@@ -64,5 +68,20 @@ class ApiVersionTest {
         assertEquals(3, parsed.minor());
         assertEquals(1, parsed.patch());
         assertEquals("alpha.2+7", parsed.build());
+    }
+
+    @Test
+    void semanticVersionParseRejectsAnEmptyOrInvalidTail() {
+        for (String version : new String[] {"0.3.0-", "0.3.0+", "0.3.0- ", "0.3.0 -", "0.3.0-alpha 2", "0.3.0+ 7"}) {
+            assertNull(SemanticVersion.parse(version), "must not parse: '" + version + "'");
+        }
+    }
+
+    @Test
+    void semanticVersionParseStillAcceptsTheTailsThisProjectActuallyEmits() {
+        for (String version : new String[] {
+                "0.3.0", "0.3.7", "0.3.0-preview.5", "0.3.1-alpha.2+7", "0.3.0+mc-1.21.9-10", "0.3.0-dev"}) {
+            assertNotNull(SemanticVersion.parse(version), "must parse: '" + version + "'");
+        }
     }
 }

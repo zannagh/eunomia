@@ -6,6 +6,7 @@ import org.slf4j.helpers.NOPLogger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,9 +23,20 @@ class RelayConnectionStateTest {
     private final List<RelayConnectionState> states = new ArrayList<>();
 
     private ExternalServerClient client() {
-        return new ExternalServerClient(
+        return client(() -> { }, states::add);
+    }
+
+    /**
+     * Builds a client whose connect action is a no-op, so {@code start()} never opens a real socket. Without that
+     * seam every test here would dial a dead address, and the resulting failure would schedule a recurring
+     * backoff reconnect that outlives the test and races extra states into the list it is asserting on.
+     */
+    private static ExternalServerClient client(Runnable onBlocked, Consumer<RelayConnectionState> onState) {
+        ExternalServerClient client = new ExternalServerClient(
                 "127.0.0.1:1", "mc.example:25565", "Example SMP", UUID.randomUUID(),
-                NOPLogger.NOP_LOGGER, () -> { }, states::add);
+                NOPLogger.NOP_LOGGER, onBlocked, onState);
+        client.connector = () -> { };
+        return client;
     }
 
     @Test
@@ -99,9 +111,7 @@ class RelayConnectionStateTest {
     void aHardBlockReportsNoStateAndLeavesTheBlockedPathToTakeOver() {
         List<RelayConnectionState> seen = new ArrayList<>();
         boolean[] blocked = {false};
-        ExternalServerClient client = new ExternalServerClient(
-                "127.0.0.1:1", "mc.example:25565", "Example SMP", UUID.randomUUID(),
-                NOPLogger.NOP_LOGGER, () -> blocked[0] = true, seen::add);
+        ExternalServerClient client = client(() -> blocked[0] = true, seen::add);
         client.start();
         client.handleConnected(null);
         seen.clear();

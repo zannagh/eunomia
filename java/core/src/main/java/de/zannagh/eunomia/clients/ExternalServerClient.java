@@ -10,12 +10,10 @@ import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
 import org.slf4j.Logger;
 
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -37,20 +35,12 @@ import java.util.function.Consumer;
  * {@link RelayConnectionState}, letting it hold serverbound packets until the session is actually open instead
  * of firing them into a handshake that is still in flight (or a socket that has since dropped).
  * <p>
- * A <em>block</em> is terminal: the relay signals it with an HTTP 403 on a REST send or a WebSocket close code
- * 1008 (policy violation). Either one stops the client for good (no more sends, no reconnect) and fires
- * {@link #onBlocked} so the caller can fall back to the Minecraft transport for the rest of the session.
+ * Two outcomes are terminal (see {@link RelayProtocol}): a <em>block</em>, where the relay refuses to serve
+ * this scope at all, and an <em>unsupported API version</em>, where the relay is healthy but does not speak
+ * {@link ApiVersion#CURRENT}. Neither can be fixed by retrying, so both stop the client for good (no more
+ * sends, no reconnect) and fire {@link #onBlocked}, handing the session back to the Minecraft transport.
  */
 public final class ExternalServerClient {
-
-    private static final long BASE_BACKOFF_MS = 1000;
-    private static final long MAX_BACKOFF_MS = 30_000;
-
-    /** HTTP status the relay returns on a REST send to a blocked scope. */
-    static final int BLOCKED_STATUS = 403;
-
-    /** WebSocket close code (RFC 6455 "policy violation") the relay uses to close a blocked scope's socket. */
-    static final int POLICY_VIOLATION_CLOSE = 1008;
 
     private final String base;
     private final String scope;
@@ -63,10 +53,18 @@ public final class ExternalServerClient {
 
     private volatile boolean running;
     private volatile boolean blocked;
+    /** Set once any terminal outcome (block or unsupported version) has stopped the client and fired the fallback. */
+    private volatile boolean terminated;
     private volatile WebSocket webSocket;
-    private volatile int attempt;
+    private final RelayBackoff backoff = new RelayBackoff();
     /** Whether the receive socket has ever opened; distinguishes "never came up" from "dropped, reconnecting". */
     private volatile boolean everConnected;
+    /**
+     * How a connect attempt actually opens the socket. Package-private and replaceable purely so lifecycle tests
+     * can drive the {@code handle*} hooks without opening a real socket - and, more importantly, without leaving
+     * a backoff reconnect loop running past the end of the test. Never reassigned in production.
+     */
+    volatile Runnable connector = this::openSocket;
 
     public ExternalServerClient(String address, String scope, String name, UUID playerId, Logger logger) {
         this(address, scope, name, playerId, logger, null, null);
@@ -99,7 +97,7 @@ public final class ExternalServerClient {
     /** Opens the receive WebSocket (with reconnect). Idempotent-ish; call once per activation. */
     public void start() {
         running = true;
-        attempt = 0;
+        backoff.reset();
         connect();
     }
 
@@ -122,15 +120,11 @@ public final class ExternalServerClient {
         boolean keyed = type instanceof KeyedPacket<?>;
         String key = data instanceof Keyed keyedData ? keyedData.keyPath().toString() : null;
         boolean replicated = data instanceof Replicated;
-        Gson gson = gson();
+        Gson gson = NetworkSerializer.gson();
         PacketEnvelope envelope = new PacketEnvelope(
                 scope, name, type.channelKey(), key, replicated, playerId.toString(), gson.toJsonTree(data));
         String path = keyed ? "/packets/keyed" : "/packets/plain";
-        HttpRequest request = HttpRequest.newBuilder(RelayEndpoints.api(base, path))
-                .timeout(Duration.ofSeconds(10))
-                .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofString(gson.toJson(envelope)))
-                .build();
+        HttpRequest request = RelayEndpoints.packetPut(base, path, gson.toJson(envelope));
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString()).whenComplete((response, error) -> {
             if (error != null) {
                 logger.warn("Failed to send {} to relay {}", type.channelKey(), base, error);
@@ -145,23 +139,21 @@ public final class ExternalServerClient {
      * 409 "no live socket" among them) is logged and left to the next send's retry. Package-private for tests.
      */
     void handleSendStatus(String channelKey, int statusCode, String body) {
-        if (statusCode == BLOCKED_STATUS) {
-            handleBlocked("HTTP " + BLOCKED_STATUS + " on REST send");
+        if (statusCode == RelayProtocol.BLOCKED_STATUS) {
+            handleBlocked("HTTP " + RelayProtocol.BLOCKED_STATUS + " on REST send");
         } else if (statusCode >= 300) {
             logger.warn("Relay rejected {} ({}): {}", channelKey, statusCode, body);
         }
     }
 
     private void connect() {
-        if (!running) {
-            return;
+        if (running) {
+            connector.run();
         }
-        String encodedScope = URLEncoder.encode(scope, StandardCharsets.UTF_8);
-        String encodedName = URLEncoder.encode(name == null ? "" : name, StandardCharsets.UTF_8);
-        // /ws itself stays unversioned; the relay reads the client's API version off the query string and
-        // treats a missing `v` as a legacy client.
-        URI uri = RelayEndpoints.ws(base, "/ws?id=" + playerId + "&scope=" + encodedScope + "&name=" + encodedName
-                + "&v=" + ApiVersion.CURRENT);
+    }
+
+    private void openSocket() {
+        URI uri = RelayEndpoints.handshake(base, playerId, scope, name);
         httpClient.newWebSocketBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .buildAsync(uri, new RelayListener(this))
@@ -175,13 +167,12 @@ public final class ExternalServerClient {
     }
 
     /**
-     * Records a successful open: resets the backoff and reports {@link RelayConnectionState#OPEN}, which is the
-     * signal that the relay now has a session for this identity/scope and will accept REST sends.
-     * Package-private for tests.
+     * Records a successful open: resets the backoff and reports {@link RelayConnectionState#OPEN}, the signal
+     * that the relay now has a session for this identity/scope and will accept REST sends. For tests.
      */
     void handleConnected(WebSocket socket) {
         webSocket = socket;
-        attempt = 0;
+        backoff.reset();
         everConnected = true;
         logger.info("Connected to external relay {} (scope {})", base, scope);
         notifyState(RelayConnectionState.OPEN);
@@ -215,13 +206,19 @@ public final class ExternalServerClient {
     }
 
     /**
-     * Reacts to a WebSocket close. Close code 1008 (policy violation) is a hard block (stop + fall back); every
-     * other code (normal, abnormal, server restart, ...) schedules a reconnect as before. Package-private for tests.
+     * Reacts to a WebSocket close. Two codes are terminal - {@link RelayProtocol#POLICY_VIOLATION_CLOSE} (a hard
+     * block) and {@link RelayProtocol#UNSUPPORTED_VERSION_CLOSE} (a version mismatch) - and fall back to the
+     * Minecraft transport rather than reconnecting into an outcome that cannot change. Every other code (normal,
+     * abnormal, server restart, ...) schedules a reconnect as before. Package-private for tests.
      */
     void handleClose(int statusCode, String reason) {
         logger.debug("Relay WebSocket closed ({}): {}", statusCode, reason);
-        if (statusCode == POLICY_VIOLATION_CLOSE) {
-            handleBlocked("WS " + POLICY_VIOLATION_CLOSE + " (policy violation): " + reason);
+        if (statusCode == RelayProtocol.POLICY_VIOLATION_CLOSE) {
+            handleBlocked("WS " + RelayProtocol.POLICY_VIOLATION_CLOSE + " (policy violation): " + reason);
+            return;
+        }
+        if (statusCode == RelayProtocol.UNSUPPORTED_VERSION_CLOSE) {
+            handleUnsupportedVersion(reason);
             return;
         }
         webSocket = null;
@@ -231,16 +228,38 @@ public final class ExternalServerClient {
         scheduleReconnect();
     }
 
-    /**
-     * Terminal blocked handling, idempotent: stops the client (no more sends, no reconnect) and hands control back
-     * to the caller via {@link #onBlocked} so it can restore the Minecraft transport for the session.
-     */
+    /** Terminal blocked handling, idempotent: the relay refuses to serve this scope, so stop and fall back. */
     private void handleBlocked(String reason) {
-        if (blocked) {
+        if (terminated) {
             return;
         }
         blocked = true;
         logger.info("Relay blocked this server ({}); syncing disabled, falling back to the Minecraft transport", reason);
+        terminate();
+    }
+
+    /**
+     * Terminal unsupported-API-version handling, idempotent. The relay is up and is not blocking anything - it
+     * simply does not serve the version this build asks for, so every reconnect would be closed the same way and
+     * the send gate would stay parked forever. Logged at WARN because, unlike a block, it is a deployment
+     * mismatch someone has to fix by updating the mod or the relay.
+     */
+    private void handleUnsupportedVersion(String reason) {
+        if (terminated) {
+            return;
+        }
+        logger.warn("Relay {} does not serve API version {} ({}); the mod and the relay are out of step - update "
+                + "one of them. Falling back to the Minecraft transport for this session.",
+                base, ApiVersion.CURRENT, reason);
+        terminate();
+    }
+
+    /**
+     * Shared terminal path: stops the client (no more sends, no reconnect) and hands control back via
+     * {@link #onBlocked}, which restores the Minecraft transport and releases the send gate for the session.
+     */
+    private void terminate() {
+        terminated = true;
         stop();
         Runnable callback = onBlocked;
         if (callback != null) {
@@ -267,18 +286,11 @@ public final class ExternalServerClient {
         if (!running) {
             return;
         }
-        long backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * (1L << Math.min(attempt, 5)));
-        long jitter = (long) (backoff * 0.2 * Math.random());
-        attempt++;
-        CompletableFuture.delayedExecutor(backoff + jitter, TimeUnit.MILLISECONDS).execute(this::connect);
+        CompletableFuture.delayedExecutor(backoff.nextDelayMs(), TimeUnit.MILLISECONDS).execute(this::connect);
     }
 
     /** Decodes and dispatches one relay frame. Never throws - called straight from a WebSocket callback. */
     void handleFrame(String json) {
         RelayFrames.dispatch(json, logger);
-    }
-
-    private Gson gson() {
-        return NetworkSerializer.gson();
     }
 }
