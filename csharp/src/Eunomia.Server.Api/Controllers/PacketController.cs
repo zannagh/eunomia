@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Eunomia.Server.Api.Models;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Logging;
 using Eunomia.Server.Core.Serialization;
 using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Core.Storage;
@@ -59,7 +60,7 @@ public class PacketController : ControllerBase
         await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
         using (_logger.BeginScope(ServerScope.Property(env.Scope)))
         {
-            _logger.LogDebug("Relayed plain packet on {Channel} for {Scope}", env.Channel, env.Scope);
+            _logger.LogDebug("Relayed plain packet on {Channel} for {Scope}", LogSafe.Value(env.Channel), LogSafe.Value(env.Scope));
         }
 
         return Ok();
@@ -86,7 +87,11 @@ public class PacketController : ControllerBase
         await _connectionManager.BroadcastToScopeAsync(env.Scope, frame, sender);
         using (_logger.BeginScope(ServerScope.Property(env.Scope)))
         {
-            _logger.LogDebug("Stored keyed packet {Key} on {Channel} for {Scope}", env.Key, env.Channel, env.Scope);
+            _logger.LogDebug(
+                "Stored keyed packet {Key} on {Channel} for {Scope}",
+                LogSafe.Value(env.Key),
+                LogSafe.Value(env.Channel),
+                LogSafe.Value(env.Scope));
         }
 
         return Ok();

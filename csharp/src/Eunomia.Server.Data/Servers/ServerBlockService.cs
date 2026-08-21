@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Logging;
 using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -72,7 +73,7 @@ public sealed class ServerBlockService : IServerBlockService
         blocked[scope] = 0;
         using (logger.BeginScope(ServerScope.Property(scope)))
         {
-            logger.LogInformation("Server {Scope} blocked: {Reason}", scope, reason ?? "(no reason)");
+            logger.LogInformation("Server {Scope} blocked: {Reason}", LogSafe.Value(scope), LogSafe.Value(reason ?? "(no reason)"));
         }
 
         await connectionManager.CloseScopeAsync(scope, WebSocketCloseStatus.PolicyViolation, "server blocked");
@@ -92,7 +93,7 @@ public sealed class ServerBlockService : IServerBlockService
         blocked.TryRemove(scope, out _);
         using (logger.BeginScope(ServerScope.Property(scope)))
         {
-            logger.LogInformation("Server {Scope} unblocked", scope);
+            logger.LogInformation("Server {Scope} unblocked", LogSafe.Value(scope));
         }
     }
 }

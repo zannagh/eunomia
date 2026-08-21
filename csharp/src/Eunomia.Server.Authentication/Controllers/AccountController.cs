@@ -3,6 +3,7 @@
 
 using System.Security.Claims;
 using Eunomia.Server.Authentication.Configuration;
+using Eunomia.Server.Authentication.Helpers;
 using Eunomia.Server.Authentication.Providers;
 using Eunomia.Server.Authentication.Resources;
 using Eunomia.Server.Authentication.Services;
@@ -82,7 +83,14 @@ public class AccountController : Controller
         string queryString = string.Join("&", parameters.Select(kvp =>
             $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 
-        return Redirect($"{config.Value.AuthUrl}?{queryString}");
+        string authorizeUrl = $"{config.Value.AuthUrl}?{queryString}";
+        if (!ProviderRedirect.IsAllowed(authorizeUrl))
+        {
+            Log.Error("[Authentication] Refusing to redirect to non-https authorize URL for {Provider}", provider);
+            return Redirect("/oauth-select?error=provider_misconfigured");
+        }
+
+        return Redirect(authorizeUrl);
     }
 
     [HttpGet("/account/callback")]

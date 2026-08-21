@@ -4,6 +4,7 @@
 using System.Net.WebSockets;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Logging;
 using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Core.Storage;
 using Microsoft.AspNetCore.Http;
@@ -75,7 +76,7 @@ public class WebSocketMiddleware
         {
             using (_logger.BeginScope(ServerScope.Property(scope)))
             {
-                _logger.LogWarning("Rejected websocket for {Scope}: Mojang did not verify {PlayerId}", scope, guid);
+                _logger.LogWarning("Rejected websocket for {Scope}: Mojang did not verify {PlayerId}", LogSafe.Value(scope), guid);
             }
 
             context.Response.StatusCode = 403;
@@ -137,7 +138,7 @@ public class WebSocketMiddleware
         await CloseQuietlyAsync(webSocket, "server blocked", timeout.Token);
         using (_logger.BeginScope(ServerScope.Property(scope)))
         {
-            _logger.LogInformation("Refused websocket for blocked scope {Scope}", scope);
+            _logger.LogInformation("Refused websocket for blocked scope {Scope}", LogSafe.Value(scope));
         }
     }
 
@@ -163,7 +164,7 @@ public class WebSocketMiddleware
         await _directory.TouchPresenceAsync(scope, name, context.RequestAborted);
         using (_logger.BeginScope(ServerScope.Property(scope)))
         {
-            _logger.LogInformation("Websocket connected for {Scope} ({PlayerId})", scope, guid);
+            _logger.LogInformation("Websocket connected for {Scope} ({PlayerId})", LogSafe.Value(scope), guid);
         }
 
         // Owns the socket's lifetime until it closes; must not be wrapped in a using here.

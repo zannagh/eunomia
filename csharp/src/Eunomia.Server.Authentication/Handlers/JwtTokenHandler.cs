@@ -164,7 +164,7 @@ public class JwtTokenHandler : ISecurityTokenHandler
 
     private async Task<string?> ExchangeCodeAsync(string tokenUrl, Dictionary<string, string> parameters, string? authorization = null)
     {
-        HttpRequestMessage request = new(HttpMethod.Post, tokenUrl)
+        using HttpRequestMessage request = new(HttpMethod.Post, tokenUrl)
         {
             Content = new FormUrlEncodedContent(parameters),
         };
@@ -175,7 +175,7 @@ public class JwtTokenHandler : ISecurityTokenHandler
         }
 
         HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
-        HttpResponseMessage response = await client.SendAsync(request);
+        using HttpResponseMessage response = await client.SendAsync(request);
         using JsonDocument? payload = await ReadJsonAsync(response, tokenUrl);
         if (payload is null)
         {
@@ -192,12 +192,12 @@ public class JwtTokenHandler : ISecurityTokenHandler
             return null;
         }
 
-        HttpRequestMessage request = new(HttpMethod.Get, userUrl);
+        using HttpRequestMessage request = new(HttpMethod.Get, userUrl);
         request.Headers.TryAddWithoutValidation("Authorization", useBearer ? $"Bearer {accessToken}" : accessToken);
         request.Headers.UserAgent.ParseAdd(UserAgent);
 
         HttpClient client = httpClientFactory.CreateClient(nameof(JwtTokenHandler));
-        HttpResponseMessage response = await client.SendAsync(request);
+        using HttpResponseMessage response = await client.SendAsync(request);
         return await ReadJsonAsync(response, userUrl);
     }
 

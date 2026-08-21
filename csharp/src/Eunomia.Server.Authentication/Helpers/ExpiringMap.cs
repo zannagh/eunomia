@@ -45,12 +45,9 @@ public sealed class ExpiringMap<TValue>
     private void Sweep()
     {
         DateTime now = DateTime.UtcNow;
-        foreach (KeyValuePair<string, Entry> pair in entries)
+        foreach (KeyValuePair<string, Entry> pair in entries.Where(pair => pair.Value.ExpiresAt <= now))
         {
-            if (pair.Value.ExpiresAt <= now)
-            {
-                entries.TryRemove(pair.Key, out _);
-            }
+            entries.TryRemove(pair.Key, out _);
         }
     }
 

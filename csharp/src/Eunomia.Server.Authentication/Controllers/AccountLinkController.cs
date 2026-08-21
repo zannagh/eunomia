@@ -1,6 +1,7 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
+using Eunomia.Server.Authentication.Helpers;
 using Eunomia.Server.Authentication.Providers;
 using Eunomia.Server.Authentication.Resources;
 using Eunomia.Server.Authentication.Services;
@@ -45,7 +46,7 @@ public class AccountLinkController : Controller
         string state = Guid.NewGuid().ToString();
         string redirectUri = $"{BaseUrl}/account/link/{provider}/callback";
         string? authorizeUrl = accountLinkService.BuildAuthorizeUrl(provider, state, redirectUri);
-        if (authorizeUrl is null)
+        if (authorizeUrl is null || !ProviderRedirect.IsAllowed(authorizeUrl))
         {
             return Redirect("/profile?error=link_unavailable");
         }

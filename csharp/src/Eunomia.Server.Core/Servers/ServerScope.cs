@@ -1,6 +1,8 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
+using Eunomia.Server.Core.Logging;
+
 namespace Eunomia.Server.Core.Servers;
 
 /// <summary>
@@ -19,6 +21,8 @@ public static class ServerScope
     /// </summary>
     public static IReadOnlyDictionary<string, object> Property(string scope)
     {
-        return new Dictionary<string, object> { [PropertyName] = scope };
+        // Scopes come from an unauthenticated handshake and are stamped onto every event in the scope,
+        // so they are sanitised once here rather than at each call site.
+        return new Dictionary<string, object> { [PropertyName] = LogSafe.Value(scope) };
     }
 }

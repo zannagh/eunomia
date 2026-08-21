@@ -39,7 +39,7 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
 
         HttpContext? httpContext = httpContextAccessor.HttpContext;
 
-        if (httpContext?.User.Identity?.IsAuthenticated == true)
+        if (httpContext is { User.Identity.IsAuthenticated: true })
         {
             cachedState = new AuthenticationState(httpContext.User);
             isInitialized = true;
