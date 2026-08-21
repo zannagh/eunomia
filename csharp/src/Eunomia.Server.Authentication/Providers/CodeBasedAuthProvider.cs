@@ -13,17 +13,17 @@ namespace Eunomia.Server.Authentication.Providers;
 /// </summary>
 public class CodeBasedAuthProvider
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan s_lifetime = TimeSpan.FromMinutes(10);
 
-    private readonly ExpiringMap<string> codeIdentityProviders = new(Lifetime, TimeSpan.FromMinutes(1));
+    private readonly ExpiringMap<string> _codeIdentityProviders = new(s_lifetime, TimeSpan.FromMinutes(1));
 
     public void AddCodeIdentityProvider(string code, string provider)
     {
-        codeIdentityProviders.Add(code, provider);
+        _codeIdentityProviders.Add(code, provider);
     }
 
     public bool GetIdentityProviderByCode(string code, [MaybeNullWhen(false)] out string? provider)
     {
-        return codeIdentityProviders.TryConsume(code, out provider);
+        return _codeIdentityProviders.TryConsume(code, out provider);
     }
 }

@@ -3,7 +3,8 @@
 
 using System.ComponentModel;
 using System.Text.Json;
-using Eunomia.Server.Api.Models;
+using Asp.Versioning;
+using Eunomia.Server.Api.Models.V0_3;
 using Eunomia.Server.Core.Communication;
 using Eunomia.Server.Core.Logging;
 using Eunomia.Server.Core.Serialization;
@@ -14,7 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-namespace Eunomia.Server.Api.Controllers;
+namespace Eunomia.Server.Api.Controllers.V0_3;
 
 /// <summary>
 /// Accepts plain and keyed packet notifications from a client's REST fallback transport and
@@ -23,23 +24,28 @@ namespace Eunomia.Server.Api.Controllers;
 /// identity that has never connected. A blocked scope is refused with 403 before any store/relay.
 /// </summary>
 [ApiController]
-[Route("api/packets")]
+[ApiVersion("0.3")]
+[Route("api/v{version:apiVersion}/[controller]")]
+
+// Legacy: pre-versioning clients (Java 0.3.0 and earlier) call the unversioned path. Resolves to
+// DefaultApiVersion. Retire once traffic on it hits zero.
+[Route("api/[controller]")]
 [AllowAnonymous]
 [Produces("application/json")]
-public class PacketController : ControllerBase
+public class PacketsController : ControllerBase
 {
     private const long MaxBodyBytes = 1024 * 1024;
 
     private readonly ConnectionManager _connectionManager;
     private readonly IKeyedPacketStore _store;
     private readonly IServerBlockService _blockService;
-    private readonly ILogger<PacketController> _logger;
+    private readonly ILogger<PacketsController> _logger;
 
-    public PacketController(
+    public PacketsController(
         ConnectionManager connectionManager,
         IKeyedPacketStore store,
         IServerBlockService blockService,
-        ILogger<PacketController> logger)
+        ILogger<PacketsController> logger)
     {
         _connectionManager = connectionManager;
         _store = store;

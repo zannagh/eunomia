@@ -3,7 +3,7 @@
 
 using System.Text.Json;
 
-namespace Eunomia.Server.Api.Models;
+namespace Eunomia.Server.Api.Models.V0_3;
 
 /// <summary>
 /// Wire envelope shared with the Java client, used for both REST puts and websocket pushes.

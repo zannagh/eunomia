@@ -18,21 +18,21 @@ namespace Eunomia.Server.Data.Storage;
 /// </summary>
 public sealed class PgKeyedPacketStore : IKeyedPacketStore
 {
-    private readonly IDbContextFactory<EunomiaDbContext> contextFactory;
-    private readonly ConcurrentDictionary<(string Scope, string Channel), object> channelLocks = new();
+    private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
+    private readonly ConcurrentDictionary<(string Scope, string Channel), object> _channelLocks = new();
 
     public PgKeyedPacketStore(IDbContextFactory<EunomiaDbContext> contextFactory)
     {
-        this.contextFactory = contextFactory;
+        _contextFactory = contextFactory;
     }
 
     public void Put(string scope, string channel, string key, JsonElement payload)
     {
         string raw = payload.GetRawText();
-        object channelLock = channelLocks.GetOrAdd((scope, channel), _ => new object());
+        object channelLock = _channelLocks.GetOrAdd((scope, channel), _ => new object());
         lock (channelLock)
         {
-            using EunomiaDbContext context = contextFactory.CreateDbContext();
+            using EunomiaDbContext context = _contextFactory.CreateDbContext();
             UpsertEntry(context, scope, channel, key, raw);
             TouchServer(context, scope);
             context.SaveChanges();
@@ -41,7 +41,7 @@ public sealed class PgKeyedPacketStore : IKeyedPacketStore
 
     public IReadOnlyList<StoreSyncPayload> SnapshotFor(string scope)
     {
-        using EunomiaDbContext context = contextFactory.CreateDbContext();
+        using EunomiaDbContext context = _contextFactory.CreateDbContext();
         List<KeyedEntry> entries = context.KeyedEntries
             .AsNoTracking()
             .Where(e => e.Scope == scope)

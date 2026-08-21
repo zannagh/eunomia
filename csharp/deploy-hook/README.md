@@ -42,7 +42,7 @@ path is **`/ci/released`** — matching the configured GitHub Payload URL.
            reverse_proxy <host>:9000
        }
        handle {
-           reverse_proxy <host>:8080
+           reverse_proxy <host>:18565
        }
    }
    ```

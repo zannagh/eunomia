@@ -20,12 +20,12 @@ namespace Eunomia.Server.Authentication.Controllers;
 /// </summary>
 public class AuthController : ControllerBase
 {
-    private readonly EunomiaAuthSettings settings;
-    private readonly ISecurityTokenHandler tokenHandler;
-    private readonly IRefreshTokenHandler refreshTokenHandler;
-    private readonly RedirectUriProvider redirectUriProvider;
-    private readonly CodeBasedAuthProvider codeBasedAuthProvider;
-    private readonly IOAuthLoginService oauthLoginService;
+    private readonly EunomiaAuthSettings _settings;
+    private readonly ISecurityTokenHandler _tokenHandler;
+    private readonly IRefreshTokenHandler _refreshTokenHandler;
+    private readonly RedirectUriProvider _redirectUriProvider;
+    private readonly CodeBasedAuthProvider _codeBasedAuthProvider;
+    private readonly IOAuthLoginService _oauthLoginService;
 
     public AuthController(
         EunomiaAuthSettings settings,
@@ -35,12 +35,12 @@ public class AuthController : ControllerBase
         CodeBasedAuthProvider codeBasedAuthProvider,
         IOAuthLoginService oauthLoginService)
     {
-        this.settings = settings;
-        this.tokenHandler = tokenHandler;
-        this.refreshTokenHandler = refreshTokenHandler;
-        this.redirectUriProvider = redirectUriProvider;
-        this.codeBasedAuthProvider = codeBasedAuthProvider;
-        this.oauthLoginService = oauthLoginService;
+        _settings = settings;
+        _tokenHandler = tokenHandler;
+        _refreshTokenHandler = refreshTokenHandler;
+        _redirectUriProvider = redirectUriProvider;
+        _codeBasedAuthProvider = codeBasedAuthProvider;
+        _oauthLoginService = oauthLoginService;
     }
 
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
@@ -56,7 +56,7 @@ public class AuthController : ControllerBase
             return BadRequest("Missing state parameter.");
         }
 
-        if (!redirectUriProvider.GetRedirectUri(state, out RedirectSettings redirectUri))
+        if (!_redirectUriProvider.GetRedirectUri(state, out RedirectSettings redirectUri))
         {
             return BadRequest("Unknown state parameter.");
         }
@@ -66,7 +66,7 @@ public class AuthController : ControllerBase
             return BadRequest("Missing code parameter.");
         }
 
-        codeBasedAuthProvider.AddCodeIdentityProvider(code, redirectUri.Provider);
+        _codeBasedAuthProvider.AddCodeIdentityProvider(code, redirectUri.Provider);
         return Redirect($"/account/callback?state={Uri.EscapeDataString(state)}&code={Uri.EscapeDataString(code)}");
     }
 
@@ -78,7 +78,7 @@ public class AuthController : ControllerBase
         [FromForm(Name = "grant_type")] string? grantType,
         [FromForm(Name = "refresh_token")] string? refreshToken = "")
     {
-        if (string.IsNullOrEmpty(settings.JwtKey))
+        if (string.IsNullOrEmpty(_settings.JwtKey))
         {
             return StatusCode(500, "Missing JWT Secret");
         }
@@ -97,7 +97,7 @@ public class AuthController : ControllerBase
             return BadRequest("Missing code parameter.");
         }
 
-        OAuthLoginResult login = await oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
+        OAuthLoginResult login = await _oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
         switch (login.Status)
         {
             case OAuthLoginStatus.UnknownCode:
@@ -109,27 +109,27 @@ public class AuthController : ControllerBase
         }
 
         ClaimsIdentity identity = ClaimsHelper.ClaimsIdentityFromUserNameAndId(login.UserName, login.UserId);
-        AccessTokenResult token = await tokenHandler.GenerateJwtTokenAsync(
-            settings.JwtKey, settings.Server.JwtIssuer, settings.JwtTokenLifetime, identity);
+        AccessTokenResult token = await _tokenHandler.GenerateJwtTokenAsync(
+            _settings.JwtKey, _settings.Server.JwtIssuer, _settings.JwtTokenLifetime, identity);
         return Ok(token);
     }
 
     private async Task<IActionResult> RefreshAsync(string refreshToken)
     {
-        if (await refreshTokenHandler.ValidateRefreshTokenAsync(refreshToken) is not { } claimsIdentity)
+        if (await _refreshTokenHandler.ValidateRefreshTokenAsync(refreshToken) is not { } claimsIdentity)
         {
             return StatusCode(401, "Invalid refresh token");
         }
 
         // Rotation must be atomic with acceptance: if we cannot mark the presented token spent, we must
         // not hand out a replacement, or the same token stays replayable until the next sweep.
-        if (!await refreshTokenHandler.InvalidateRefreshTokenAsync(refreshToken))
+        if (!await _refreshTokenHandler.InvalidateRefreshTokenAsync(refreshToken))
         {
             Log.Error("Refused refresh: could not consume presented refresh token");
             return StatusCode(401, "Invalid refresh token");
         }
 
-        return Ok(await tokenHandler.GenerateJwtTokenAsync(
-            settings.JwtKey, settings.Server.JwtIssuer, settings.JwtTokenLifetime, claimsIdentity));
+        return Ok(await _tokenHandler.GenerateJwtTokenAsync(
+            _settings.JwtKey, _settings.Server.JwtIssuer, _settings.JwtTokenLifetime, claimsIdentity));
     }
 }

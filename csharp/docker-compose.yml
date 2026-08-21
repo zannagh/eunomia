@@ -16,7 +16,10 @@ services:
       # Kept in sync with the app's POSTGRES__PASSWORD; override both from the same host var.
       POSTGRES_PASSWORD: ${POSTGRES__PASSWORD:-eunomia_dev}
     ports:
-      - "5432:5432"
+      # Host-side only, for psql/pgAdmin from the host. The app reaches Postgres over the compose
+      # network at postgres:5432 and is unaffected by this. Off 5432 so a local Postgres install or
+      # another project's stack can coexist without a bind conflict.
+      - "${POSTGRES_PORT:-18566}:5432"
     volumes:
       - eunomia-pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -41,7 +44,10 @@ services:
     #   context: .
     #   dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      # Host port deliberately off the beaten track: 8080/8000/5000/9000 collide with almost every
+      # other dev stack, and 255xx is reserved in spirit for the Minecraft servers our users run.
+      # The container still listens on 8080 (see Dockerfile ASPNETCORE_URLS), only the host side moves.
+      - "${EUNOMIA_PORT:-18565}:8080"
     environment:
       # Fixed for the containerized stack.
       - ASPNETCORE_ENVIRONMENT=Production

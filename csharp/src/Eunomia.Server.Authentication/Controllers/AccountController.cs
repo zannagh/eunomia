@@ -24,18 +24,18 @@ namespace Eunomia.Server.Authentication.Controllers;
 /// </summary>
 public class AccountController : Controller
 {
-    private readonly EunomiaAuthSettings settings;
-    private readonly RedirectUriProvider redirectUriProvider;
-    private readonly IOAuthLoginService oauthLoginService;
+    private readonly EunomiaAuthSettings _settings;
+    private readonly RedirectUriProvider _redirectUriProvider;
+    private readonly IOAuthLoginService _oauthLoginService;
 
     public AccountController(
         EunomiaAuthSettings settings,
         RedirectUriProvider redirectUriProvider,
         IOAuthLoginService oauthLoginService)
     {
-        this.settings = settings;
-        this.redirectUriProvider = redirectUriProvider;
-        this.oauthLoginService = oauthLoginService;
+        _settings = settings;
+        _redirectUriProvider = redirectUriProvider;
+        _oauthLoginService = oauthLoginService;
     }
 
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
@@ -65,7 +65,7 @@ public class AccountController : Controller
         }
 
         string state = Guid.NewGuid().ToString();
-        redirectUriProvider.AddRedirectUri(state, new RedirectSettings
+        _redirectUriProvider.AddRedirectUri(state, new RedirectSettings
         {
             Uri = $"{BaseUrl}/account/callback",
             Provider = provider,
@@ -104,7 +104,7 @@ public class AccountController : Controller
 
         try
         {
-            OAuthLoginResult login = await oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
+            OAuthLoginResult login = await _oauthLoginService.ResolveCodeAsync(code, $"{BaseUrl}/oauth-callback");
             if (login.Status != OAuthLoginStatus.Success || login.User is not { } user)
             {
                 Log.Error("[Authentication] Code exchange failed with status {Status}", login.Status);
@@ -167,10 +167,10 @@ public class AccountController : Controller
 
     private (string AuthUrl, string ClientId)? GetProviderAuthConfig(string provider) => provider switch
     {
-        "github" when settings.GitHubOAuth.Enabled => (settings.GitHubOAuth.OAuthUrl, settings.GitHubOAuth.ClientId),
-        "microsoft" when settings.MicrosoftOAuth.Enabled => (settings.MicrosoftOAuth.OAuthUrl, settings.MicrosoftOAuth.ClientId),
-        "google" when settings.GoogleOAuth.Enabled => (settings.GoogleOAuth.OAuthUrl, settings.GoogleOAuth.ClientId),
-        "modrinth" when settings.ModrinthOAuth.Enabled => (settings.ModrinthOAuth.OAuthUrl, settings.ModrinthOAuth.ClientId),
+        "github" when _settings.GitHubOAuth.Enabled => (_settings.GitHubOAuth.OAuthUrl, _settings.GitHubOAuth.ClientId),
+        "microsoft" when _settings.MicrosoftOAuth.Enabled => (_settings.MicrosoftOAuth.OAuthUrl, _settings.MicrosoftOAuth.ClientId),
+        "google" when _settings.GoogleOAuth.Enabled => (_settings.GoogleOAuth.OAuthUrl, _settings.GoogleOAuth.ClientId),
+        "modrinth" when _settings.ModrinthOAuth.Enabled => (_settings.ModrinthOAuth.OAuthUrl, _settings.ModrinthOAuth.ClientId),
         _ => null,
     };
 }

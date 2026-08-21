@@ -16,15 +16,15 @@ namespace Eunomia.Server.Tests.TestSupport;
 /// </summary>
 public sealed class SqliteDbContextFactory : IDbContextFactory<EunomiaDbContext>, IDisposable
 {
-    private readonly string databasePath =
+    private readonly string _databasePath =
         Path.Combine(Path.GetTempPath(), "eunomia-sqlite-" + Guid.NewGuid().ToString("N") + ".db");
 
-    private readonly DbContextOptions<EunomiaDbContext> options;
+    private readonly DbContextOptions<EunomiaDbContext> _options;
 
     public SqliteDbContextFactory()
     {
-        options = new DbContextOptionsBuilder<EunomiaDbContext>()
-            .UseSqlite($"Data Source={databasePath}")
+        _options = new DbContextOptionsBuilder<EunomiaDbContext>()
+            .UseSqlite($"Data Source={_databasePath}")
             .Options;
 
         using EunomiaDbContext context = CreateDbContext();
@@ -33,16 +33,16 @@ public sealed class SqliteDbContextFactory : IDbContextFactory<EunomiaDbContext>
 
     public EunomiaDbContext CreateDbContext()
     {
-        return new EunomiaDbContext(options);
+        return new EunomiaDbContext(_options);
     }
 
     public void Dispose()
     {
         // Release pooled connections before deleting the file, or the delete races the open handle.
         SqliteConnection.ClearAllPools();
-        if (File.Exists(databasePath))
+        if (File.Exists(_databasePath))
         {
-            File.Delete(databasePath);
+            File.Delete(_databasePath);
         }
     }
 }

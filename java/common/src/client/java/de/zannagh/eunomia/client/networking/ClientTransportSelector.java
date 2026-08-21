@@ -4,6 +4,7 @@ import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.clients.ExternalClientTransport;
 import de.zannagh.eunomia.clients.ExternalServerClient;
 import de.zannagh.eunomia.clients.PingClient;
+import de.zannagh.eunomia.clients.RelayConnectionState;
 import de.zannagh.eunomia.configuration.EunomiaConfig;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
@@ -11,6 +12,7 @@ import net.minecraft.client.Minecraft;
 
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Chooses the client send/receive path each time the capability probe resolves. The rule mirrors the design
@@ -78,16 +80,46 @@ public final class ClientTransportSelector {
 
     private static synchronized void startExternal(String address, String scope, String name, UUID playerId) {
         stopExternal();
+        // The relay 409s any REST send without a live WebSocket session for this identity/scope, and nothing
+        // retries a 409 - so the gate must not treat the relay as a destination until its socket is open.
+        // A previous activation may still be in effect after a reconnect; park until this one reports OPEN.
+        CommunicationManager.setExternalTransportActive(false);
         // On a hard block (HTTP 403 / WS 1008) the relay client hands control back here to restore vanilla
         // transport for the rest of the session; abandonFallback is idempotent and thread-safe.
+        // The state listener needs to identify its own client, which does not exist yet when it is built.
+        AtomicReference<ExternalServerClient> self = new AtomicReference<>();
         ExternalServerClient client = new ExternalServerClient(
-                address, scope, name, playerId, Eunomia.LOGGER, ClientTransportSelector::abandonFallback);
-        client.start();
+                address, scope, name, playerId, Eunomia.LOGGER,
+                ClientTransportSelector::abandonFallback,
+                state -> onRelayConnectionState(self.get(), state));
+        self.set(client);
         external = client;
+        // Installed up front so the socket-open callback has somewhere to deliver to; the gate, not the
+        // transport, is what decides whether serverbound packets may leave yet.
         CommunicationManager.setClientTransport(new ExternalClientTransport(client));
-        // The relay is now the destination: flush anything parked on join to it, and route future sends there.
-        CommunicationManager.setExternalTransportActive(true);
+        client.start();
         Eunomia.LOGGER.info("Routing Eunomia through external relay {} (scope {})", address, scope);
+    }
+
+    /**
+     * Couples the send gate to the relay's actual socket state instead of to "we asked it to connect".
+     * OPEN flushes anything parked on join; RECONNECTING re-parks so sends wait for the socket to return
+     * rather than being 409'd away; UNAVAILABLE (the socket never came up at all) releases the parked queue
+     * so a relay that answers /health but never opens its WebSocket cannot hold packets forever.
+     */
+    private static void onRelayConnectionState(ExternalServerClient client, RelayConnectionState state) {
+        if (client != external) {
+            // A stale client from a previous connection; it no longer owns the transport.
+            return;
+        }
+        switch (state) {
+            case OPEN -> CommunicationManager.setExternalTransportActive(true);
+            case RECONNECTING -> CommunicationManager.setExternalTransportActive(false);
+            case UNAVAILABLE -> {
+                Eunomia.LOGGER.info("External relay WebSocket never opened; releasing parked sends until it does");
+                CommunicationManager.concludeNoRelay();
+            }
+        }
     }
 
     private static synchronized void stopExternal() {

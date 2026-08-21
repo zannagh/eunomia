@@ -17,11 +17,11 @@ namespace Eunomia.Server.Authentication.Services;
 /// </summary>
 public class OAuthLoginService : IOAuthLoginService
 {
-    private readonly EunomiaAuthSettings settings;
-    private readonly ISecurityTokenHandler tokenHandler;
-    private readonly CodeBasedAuthProvider codeBasedAuthProvider;
-    private readonly ICurrentUserService currentUserService;
-    private readonly IAccountLinkService accountLinkService;
+    private readonly EunomiaAuthSettings _settings;
+    private readonly ISecurityTokenHandler _tokenHandler;
+    private readonly CodeBasedAuthProvider _codeBasedAuthProvider;
+    private readonly ICurrentUserService _currentUserService;
+    private readonly IAccountLinkService _accountLinkService;
 
     public OAuthLoginService(
         EunomiaAuthSettings settings,
@@ -30,11 +30,11 @@ public class OAuthLoginService : IOAuthLoginService
         ICurrentUserService currentUserService,
         IAccountLinkService accountLinkService)
     {
-        this.settings = settings;
-        this.tokenHandler = tokenHandler;
-        this.codeBasedAuthProvider = codeBasedAuthProvider;
-        this.currentUserService = currentUserService;
-        this.accountLinkService = accountLinkService;
+        _settings = settings;
+        _tokenHandler = tokenHandler;
+        _codeBasedAuthProvider = codeBasedAuthProvider;
+        _currentUserService = currentUserService;
+        _accountLinkService = accountLinkService;
     }
 
     public async Task<OAuthLoginResult> ResolveCodeAsync(string code, string redirectUri)
@@ -44,7 +44,7 @@ public class OAuthLoginService : IOAuthLoginService
             return OAuthLoginResult.Failed(OAuthLoginStatus.UnknownCode);
         }
 
-        if (!codeBasedAuthProvider.GetIdentityProviderByCode(code, out string? provider)
+        if (!_codeBasedAuthProvider.GetIdentityProviderByCode(code, out string? provider)
             || string.IsNullOrEmpty(provider))
         {
             return OAuthLoginResult.Failed(OAuthLoginStatus.UnknownCode);
@@ -62,11 +62,11 @@ public class OAuthLoginService : IOAuthLoginService
         }
 
         string identifier = ClaimsHelper.ToUserIdentifier(result.UserName, result.UserId);
-        User user = await currentUserService.EnsureUserAsync(identifier);
+        User user = await _currentUserService.EnsureUserAsync(identifier);
 
         if (provider == AccountLinkService.Modrinth)
         {
-            await accountLinkService.UpsertLinkAsync(user.Id, AccountLinkService.Modrinth, result.UserId, result.UserName);
+            await _accountLinkService.UpsertLinkAsync(user.Id, AccountLinkService.Modrinth, result.UserId, result.UserName);
         }
 
         return OAuthLoginResult.Succeeded(user, result.UserName, result.UserId);
@@ -76,14 +76,14 @@ public class OAuthLoginService : IOAuthLoginService
     {
         return provider switch
         {
-            "google" => tokenHandler.VerifyGoogleAuthentication(
-                settings.GoogleOAuth.ClientId, settings.GoogleOAuth.ClientSecret, code, redirectUri, "authorization_code"),
-            "microsoft" => tokenHandler.VerifyMicrosoftAuthentication(
-                settings.MicrosoftOAuth.ClientId, settings.MicrosoftOAuth.ClientSecret, code, redirectUri, "authorization_code"),
-            "github" => tokenHandler.VerifyGitHubAuthentication(
-                settings.GitHubOAuth.ClientId, settings.GitHubOAuth.ClientSecret, code),
-            "modrinth" => tokenHandler.VerifyModrinthAuthentication(
-                settings.ModrinthOAuth.ClientId, settings.ModrinthOAuth.ClientSecret, code, redirectUri),
+            "google" => _tokenHandler.VerifyGoogleAuthentication(
+                _settings.GoogleOAuth.ClientId, _settings.GoogleOAuth.ClientSecret, code, redirectUri, "authorization_code"),
+            "microsoft" => _tokenHandler.VerifyMicrosoftAuthentication(
+                _settings.MicrosoftOAuth.ClientId, _settings.MicrosoftOAuth.ClientSecret, code, redirectUri, "authorization_code"),
+            "github" => _tokenHandler.VerifyGitHubAuthentication(
+                _settings.GitHubOAuth.ClientId, _settings.GitHubOAuth.ClientSecret, code),
+            "modrinth" => _tokenHandler.VerifyModrinthAuthentication(
+                _settings.ModrinthOAuth.ClientId, _settings.ModrinthOAuth.ClientSecret, code, redirectUri),
             _ => Task.FromResult(new VerificationResult { Success = false, UserId = string.Empty, UserName = string.Empty }),
         };
     }

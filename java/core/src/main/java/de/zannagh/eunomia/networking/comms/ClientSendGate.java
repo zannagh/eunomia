@@ -26,7 +26,10 @@ import java.util.List;
  * resolve <em>absent</em> first, then a reachability check), so an absent resolution does NOT drop the
  * queue immediately - the queue is <em>parked</em> until the fallback decision lands:
  * {@link #setExternalTransportActive(boolean) setExternalTransportActive(true)} flushes it to the relay,
- * and {@link #concludeNoRelay()} (no opt-in / unreachable / hard-blocked) drops it. This is what lets a
+ * and {@link #concludeNoRelay()} (no opt-in / unreachable / hard-blocked) drops it. Activation is tied to the
+ * relay's WebSocket actually being open, not merely requested: the relay answers a REST send with HTTP 409
+ * unless a live socket session exists, and nothing retries a 409 - so a send fired during the handshake would
+ * be lost. Deactivation (the socket dropped, a reconnect is pending) re-parks the queue rather than dropping it. This is what lets a
  * config sent on join actually reach the relay instead of being dropped in the gap between "server is not
  * Eunomia" and "relay is up". Once the relay is active, sends dispatch to it regardless of the (absent)
  * Minecraft capability - the relay is a valid, opted-in destination.</p>
@@ -89,15 +92,20 @@ final class ClientSendGate {
 
     /**
      * Marks the external relay transport active (or not) and flushes the parked queue. Called by the client
-     * transport selector once it has installed (or torn down) the relay transport. Activating delivers every
-     * parked send to the relay; deactivating re-evaluates them (delivered if the server turned out to run
-     * Eunomia, dropped otherwise).
+     * transport selector once the relay's receive socket has actually opened (or dropped). Activating delivers
+     * every parked send to the relay; deactivating leaves the queue parked for the pending reconnect.
      */
     static void setExternalTransportActive(boolean active) {
         synchronized (MONITOR) {
             externalActive = active;
             concludedNoRelay = false;
-            flush();
+            if (active) {
+                flush();
+            }
+            // Deactivating deliberately does NOT flush. It means "the relay's socket is down, a reconnect is
+            // coming" - flushing there would re-evaluate the queue against an absent Minecraft capability and
+            // drop it. The queue stays parked until the socket is back (active again) or concludeNoRelay()
+            // decides there is no destination at all.
         }
     }
 

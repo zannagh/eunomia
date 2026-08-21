@@ -18,20 +18,20 @@ public sealed class ServerDirectory : IServerDirectory
 {
     private const int MaxLogLimit = 500;
 
-    private readonly IDbContextFactory<EunomiaDbContext> contextFactory;
-    private readonly ConnectionManager connectionManager;
+    private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
+    private readonly ConnectionManager _connectionManager;
 
     public ServerDirectory(
         IDbContextFactory<EunomiaDbContext> contextFactory,
         ConnectionManager connectionManager)
     {
-        this.contextFactory = contextFactory;
-        this.connectionManager = connectionManager;
+        _contextFactory = contextFactory;
+        _connectionManager = connectionManager;
     }
 
     public async Task TouchPresenceAsync(string scope, string? name, CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         DateTime now = DateTime.UtcNow;
         ServerRecord? server = await context.Servers.FindAsync([scope], cancellationToken);
         if (server is null)
@@ -58,19 +58,19 @@ public sealed class ServerDirectory : IServerDirectory
 
     public async Task<IReadOnlyList<ServerSummary>> ListAsync(CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         List<ServerRecord> records = await context.Servers.AsNoTracking().ToListAsync(cancellationToken);
 
         HashSet<string> known = new(records.Select(r => r.Scope), StringComparer.Ordinal);
         List<ServerSummary> summaries = records.Select(ToSummary).ToList();
 
         // Live-connected scopes without a persisted record yet still surface, marked online.
-        foreach (string scope in connectionManager.ActiveScopes())
+        foreach (string scope in _connectionManager.ActiveScopes())
         {
             if (known.Add(scope))
             {
                 summaries.Add(new ServerSummary(
-                    scope, null, connectionManager.LiveCount(scope), 0, default, default, false, null, true));
+                    scope, null, _connectionManager.LiveCount(scope), 0, default, default, false, null, true));
             }
         }
 
@@ -79,11 +79,11 @@ public sealed class ServerDirectory : IServerDirectory
 
     public async Task<ServerDetail?> GetAsync(string scope, CancellationToken cancellationToken = default)
     {
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         ServerRecord? record = await context.Servers.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Scope == scope, cancellationToken);
 
-        bool online = connectionManager.LiveCount(scope) > 0;
+        bool online = _connectionManager.LiveCount(scope) > 0;
         if (record is null && !online)
         {
             return null;
@@ -97,7 +97,7 @@ public sealed class ServerDirectory : IServerDirectory
 
         ServerSummary summary = record is not null
             ? ToSummary(record)
-            : new ServerSummary(scope, null, connectionManager.LiveCount(scope), 0, default, default, false, null, true);
+            : new ServerSummary(scope, null, _connectionManager.LiveCount(scope), 0, default, default, false, null, true);
 
         return new ServerDetail(summary, channels, channels.Sum(c => (long)c.EntryCount));
     }
@@ -109,7 +109,7 @@ public sealed class ServerDirectory : IServerDirectory
         CancellationToken cancellationToken = default)
     {
         int capped = Math.Clamp(limit, 1, MaxLogLimit);
-        await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         IQueryable<ServerLogEntry> query = context.ServerLogs.AsNoTracking().Where(l => l.Scope == scope);
         if (!string.IsNullOrWhiteSpace(level))
         {
@@ -128,7 +128,7 @@ public sealed class ServerDirectory : IServerDirectory
 
     private ServerSummary ToSummary(ServerRecord record)
     {
-        int live = connectionManager.LiveCount(record.Scope);
+        int live = _connectionManager.LiveCount(record.Scope);
         return new ServerSummary(
             record.Scope,
             record.Name,

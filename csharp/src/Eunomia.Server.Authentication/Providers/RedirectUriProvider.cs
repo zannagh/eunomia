@@ -14,17 +14,17 @@ namespace Eunomia.Server.Authentication.Providers;
 /// </summary>
 public class RedirectUriProvider
 {
-    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan s_lifetime = TimeSpan.FromMinutes(10);
 
-    private readonly ExpiringMap<RedirectSettings> stateRedirectUris = new(Lifetime, TimeSpan.FromMinutes(1));
+    private readonly ExpiringMap<RedirectSettings> _stateRedirectUris = new(s_lifetime, TimeSpan.FromMinutes(1));
 
     public void AddRedirectUri(string state, RedirectSettings redirectSettings)
     {
-        stateRedirectUris.Add(state, redirectSettings);
+        _stateRedirectUris.Add(state, redirectSettings);
     }
 
     public bool GetRedirectUri(string state, [MaybeNullWhen(false)] out RedirectSettings redirectSettings)
     {
-        return stateRedirectUris.TryConsume(state, out redirectSettings);
+        return _stateRedirectUris.TryConsume(state, out redirectSettings);
     }
 }

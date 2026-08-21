@@ -15,7 +15,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<EunomiaDbC
     public EunomiaDbContext CreateDbContext(string[] args)
     {
         DbContextOptionsBuilder<EunomiaDbContext> optionsBuilder = new();
-        optionsBuilder.UseNpgsql("Host=localhost;Port=5432;Database=eunomia;Username=postgres;Password=eunomia_dev");
+        optionsBuilder.UseNpgsql("Host=localhost;Port=18566;Database=eunomia;Username=postgres;Password=eunomia_dev");
         return new EunomiaDbContext(optionsBuilder.Options);
     }
 }

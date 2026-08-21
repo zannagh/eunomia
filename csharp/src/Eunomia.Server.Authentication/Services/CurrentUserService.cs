@@ -19,12 +19,12 @@ namespace Eunomia.Server.Authentication.Services;
 /// </summary>
 public class CurrentUserService : ICurrentUserService
 {
-    private readonly IHttpContextAccessor? accessor;
-    private readonly AuthenticationStateProvider? authenticationStateProvider;
-    private readonly IDbContextFactory<EunomiaDbContext> dbContextFactory;
-    private readonly EunomiaAuthSettings settings;
+    private readonly IHttpContextAccessor? _accessor;
+    private readonly AuthenticationStateProvider? _authenticationStateProvider;
+    private readonly IDbContextFactory<EunomiaDbContext> _dbContextFactory;
+    private readonly EunomiaAuthSettings _settings;
 
-    private User? cachedUser;
+    private User? _cachedUser;
 
     public CurrentUserService(
         EunomiaAuthSettings settings,
@@ -32,19 +32,19 @@ public class CurrentUserService : ICurrentUserService
         AuthenticationStateProvider? authenticationStateProvider = null,
         IHttpContextAccessor? accessor = null)
     {
-        this.accessor = accessor;
-        this.authenticationStateProvider = authenticationStateProvider;
-        this.dbContextFactory = dbContextFactory;
-        this.settings = settings;
+        _accessor = accessor;
+        _authenticationStateProvider = authenticationStateProvider;
+        _dbContextFactory = dbContextFactory;
+        _settings = settings;
     }
 
-    public void InvalidateCache() => cachedUser = null;
+    public void InvalidateCache() => _cachedUser = null;
 
     public async Task<User> GetCurrentUserAsync()
     {
-        if (cachedUser is not null)
+        if (_cachedUser is not null)
         {
-            return cachedUser;
+            return _cachedUser;
         }
 
         ClaimsIdentity? claimsIdentity = await TryGetClaimsIdentityFromCookie()
@@ -62,8 +62,8 @@ public class CurrentUserService : ICurrentUserService
             throw new UnauthorizedAccessException();
         }
 
-        cachedUser = await EnsureUserAsync(identifier);
-        return cachedUser;
+        _cachedUser = await EnsureUserAsync(identifier);
+        return _cachedUser;
     }
 
     public async Task<User> EnsureUserAsync(string identifier)
@@ -73,7 +73,7 @@ public class CurrentUserService : ICurrentUserService
             throw new UnauthorizedAccessException();
         }
 
-        await using EunomiaDbContext dbContext = await dbContextFactory.CreateDbContextAsync();
+        await using EunomiaDbContext dbContext = await _dbContextFactory.CreateDbContextAsync();
 
         User? user = await dbContext.Users.FirstOrDefaultAsync(u => u.Identifier == identifier);
         if (user == null)
@@ -88,7 +88,7 @@ public class CurrentUserService : ICurrentUserService
             await dbContext.SaveChangesAsync();
         }
 
-        if (settings.AdminIdentifiers.Contains(identifier) && user.Role != IdentityRole.Admin)
+        if (_settings.AdminIdentifiers.Contains(identifier) && user.Role != IdentityRole.Admin)
         {
             user.Role = IdentityRole.Admin;
             await dbContext.SaveChangesAsync();
@@ -99,12 +99,12 @@ public class CurrentUserService : ICurrentUserService
 
     private async Task<ClaimsIdentity?> TryGetClaimsIdentityFromCookie()
     {
-        if (authenticationStateProvider == null)
+        if (_authenticationStateProvider == null)
         {
             return null;
         }
 
-        AuthenticationState cookieState = await authenticationStateProvider.GetAuthenticationStateAsync();
+        AuthenticationState cookieState = await _authenticationStateProvider.GetAuthenticationStateAsync();
 
         if (cookieState.User is not { Identity.IsAuthenticated: true }
             || cookieState.User.FindFirst(ClaimTypes.NameIdentifier) is not { } nameIdentifier
@@ -121,7 +121,7 @@ public class CurrentUserService : ICurrentUserService
 
     private ClaimsIdentity? TryGetClaimsIdentityFromHttpContext()
     {
-        if (accessor?.HttpContext is not { } httpContext)
+        if (_accessor?.HttpContext is not { } httpContext)
         {
             return null;
         }

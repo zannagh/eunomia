@@ -1,7 +1,7 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
-namespace Eunomia.Server.Api.Models;
+namespace Eunomia.Server.Api.Models.V0_3;
 
 /// <summary>
 /// Body of a block request: the operator-supplied reason recorded on the server record and shown in

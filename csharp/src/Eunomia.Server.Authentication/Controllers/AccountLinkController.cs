@@ -19,18 +19,18 @@ namespace Eunomia.Server.Authentication.Controllers;
 [Authorize]
 public class AccountLinkController : Controller
 {
-    private readonly IAccountLinkService accountLinkService;
-    private readonly RedirectUriProvider redirectUriProvider;
-    private readonly ICurrentUserService currentUserService;
+    private readonly IAccountLinkService _accountLinkService;
+    private readonly RedirectUriProvider _redirectUriProvider;
+    private readonly ICurrentUserService _currentUserService;
 
     public AccountLinkController(
         IAccountLinkService accountLinkService,
         RedirectUriProvider redirectUriProvider,
         ICurrentUserService currentUserService)
     {
-        this.accountLinkService = accountLinkService;
-        this.redirectUriProvider = redirectUriProvider;
-        this.currentUserService = currentUserService;
+        _accountLinkService = accountLinkService;
+        _redirectUriProvider = redirectUriProvider;
+        _currentUserService = currentUserService;
     }
 
     private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
@@ -38,21 +38,21 @@ public class AccountLinkController : Controller
     [HttpGet("/account/link/{provider}")]
     public async Task<IActionResult> StartLink(string provider)
     {
-        if (!accountLinkService.IsLinkable(provider))
+        if (!_accountLinkService.IsLinkable(provider))
         {
             return Redirect("/profile?error=link_unavailable");
         }
 
         string state = Guid.NewGuid().ToString();
         string redirectUri = $"{BaseUrl}/account/link/{provider}/callback";
-        string? authorizeUrl = accountLinkService.BuildAuthorizeUrl(provider, state, redirectUri);
+        string? authorizeUrl = _accountLinkService.BuildAuthorizeUrl(provider, state, redirectUri);
         if (authorizeUrl is null || !ProviderRedirect.IsAllowed(authorizeUrl))
         {
             return Redirect("/profile?error=link_unavailable");
         }
 
-        User owner = await currentUserService.GetCurrentUserAsync();
-        redirectUriProvider.AddRedirectUri(state, new RedirectSettings
+        User owner = await _currentUserService.GetCurrentUserAsync();
+        _redirectUriProvider.AddRedirectUri(state, new RedirectSettings
         {
             Uri = redirectUri,
             Provider = provider,
@@ -69,12 +69,12 @@ public class AccountLinkController : Controller
             return Redirect("/profile?error=link_failed");
         }
 
-        if (!redirectUriProvider.GetRedirectUri(state, out RedirectSettings redirect) || redirect.Provider != provider)
+        if (!_redirectUriProvider.GetRedirectUri(state, out RedirectSettings redirect) || redirect.Provider != provider)
         {
             return Redirect("/profile?error=link_state");
         }
 
-        User user = await currentUserService.GetCurrentUserAsync();
+        User user = await _currentUserService.GetCurrentUserAsync();
 
         // The state must have been minted by *this* user's StartLink. Without this, anyone could start a
         // link, keep the code+state, and have a signed-in victim open the callback URL - binding the
@@ -86,7 +86,7 @@ public class AccountLinkController : Controller
         }
 
         string redirectUri = $"{BaseUrl}/account/link/{provider}/callback";
-        UserExternalLink? link = await accountLinkService.CompleteLinkAsync(provider, code, redirectUri, user.Id);
+        UserExternalLink? link = await _accountLinkService.CompleteLinkAsync(provider, code, redirectUri, user.Id);
 
         return Redirect(link is null
             ? "/profile?error=link_failed"
@@ -97,8 +97,8 @@ public class AccountLinkController : Controller
     [Produces("application/json")]
     public async Task<IActionResult> MyLinks()
     {
-        User user = await currentUserService.GetCurrentUserAsync();
-        IReadOnlyList<UserExternalLink> links = await accountLinkService.GetLinksAsync(user.Id);
+        User user = await _currentUserService.GetCurrentUserAsync();
+        IReadOnlyList<UserExternalLink> links = await _accountLinkService.GetLinksAsync(user.Id);
         return Ok(links.Select(l => new { l.Provider, l.ExternalId, l.Handle, l.LinkedAt }));
     }
 }

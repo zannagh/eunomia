@@ -23,20 +23,20 @@ public sealed class ServerLogSink : ILogEventSink, IDisposable
     private const int QueueCapacity = 10_000;
     private const int BatchSize = 100;
 
-    private readonly IDbContextFactory<EunomiaDbContext> contextFactory;
-    private readonly Channel<ServerLogEntry> queue;
-    private readonly Task consumer;
-    private int disposed;
+    private readonly IDbContextFactory<EunomiaDbContext> _contextFactory;
+    private readonly Channel<ServerLogEntry> _queue;
+    private readonly Task _consumer;
+    private int _disposed;
 
     public ServerLogSink(IDbContextFactory<EunomiaDbContext> contextFactory)
     {
-        this.contextFactory = contextFactory;
-        queue = Channel.CreateBounded<ServerLogEntry>(new BoundedChannelOptions(QueueCapacity)
+        _contextFactory = contextFactory;
+        _queue = Channel.CreateBounded<ServerLogEntry>(new BoundedChannelOptions(QueueCapacity)
         {
             FullMode = BoundedChannelFullMode.DropWrite,
             SingleReader = true,
         });
-        consumer = Task.Run(ConsumeAsync);
+        _consumer = Task.Run(ConsumeAsync);
     }
 
     public void Emit(LogEvent logEvent)
@@ -56,20 +56,20 @@ public sealed class ServerLogSink : ILogEventSink, IDisposable
         };
 
         // Non-blocking: on backpressure the event is dropped rather than stalling the caller.
-        queue.Writer.TryWrite(entry);
+        _queue.Writer.TryWrite(entry);
     }
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref disposed, 1) != 0)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
             return;
         }
 
-        queue.Writer.TryComplete();
+        _queue.Writer.TryComplete();
         try
         {
-            consumer.Wait(TimeSpan.FromSeconds(5));
+            _consumer.Wait(TimeSpan.FromSeconds(5));
         }
         catch (Exception ex)
         {
@@ -93,7 +93,7 @@ public sealed class ServerLogSink : ILogEventSink, IDisposable
 
     private async Task ConsumeAsync()
     {
-        ChannelReader<ServerLogEntry> reader = queue.Reader;
+        ChannelReader<ServerLogEntry> reader = _queue.Reader;
         while (await reader.WaitToReadAsync())
         {
             List<ServerLogEntry> batch = DrainBatch(reader);
@@ -121,7 +121,7 @@ public sealed class ServerLogSink : ILogEventSink, IDisposable
     {
         try
         {
-            await using EunomiaDbContext context = await contextFactory.CreateDbContextAsync();
+            await using EunomiaDbContext context = await _contextFactory.CreateDbContextAsync();
             context.ServerLogs.AddRange(batch);
             await context.SaveChangesAsync();
         }

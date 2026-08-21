@@ -9,7 +9,7 @@
 <div class="eu-page">
     <div class="eu-page-head"><h1>Profile</h1></div>
 
-    @if (user is null)
+    @if (_user is null)
     {
         <div class="eu-empty">Loading...</div>
     }
@@ -18,9 +18,9 @@
         <div class="eu-profile-card">
             <div class="eu-avatar">@AvatarInitial</div>
             <div>
-                <div class="eu-profile-name">@user.DisplayName</div>
-                <span class="eu-badge eu-badge-role">@user.Role</span>
-                <div class="eu-muted eu-mono">@user.Identifier</div>
+                <div class="eu-profile-name">@_user.DisplayName</div>
+                <span class="eu-badge eu-badge-role">@_user.Role</span>
+                <div class="eu-muted eu-mono">@_user.Identifier</div>
             </div>
         </div>
 
@@ -53,25 +53,25 @@
 </div>
 
 @code {
-    private User? user;
-    private IReadOnlyList<UserExternalLink> links = [];
+    private User? _user;
+    private IReadOnlyList<UserExternalLink> _links = [];
 
     // Modrinth doubles as a login provider; Discord is link-only. Both are offered when enabled.
     private static readonly string[] CandidateProviders = ["modrinth", "discord"];
 
-    private char AvatarInitial => string.IsNullOrEmpty(user?.DisplayName) ? '?' : char.ToUpperInvariant(user!.DisplayName[0]);
+    private char AvatarInitial => string.IsNullOrEmpty(_user?.DisplayName) ? '?' : char.ToUpperInvariant(_user!.DisplayName[0]);
 
     private List<string> LinkableProviders =>
         CandidateProviders.Where(AccountLinkService.IsLinkable).ToList();
 
     protected override async Task OnInitializedAsync()
     {
-        user = await CurrentUserService.GetCurrentUserAsync();
-        links = await AccountLinkService.GetLinksAsync(user.Id);
+        _user = await CurrentUserService.GetCurrentUserAsync();
+        _links = await AccountLinkService.GetLinksAsync(_user.Id);
     }
 
     private UserExternalLink? FindLink(string provider) =>
-        links.FirstOrDefault(l => string.Equals(l.Provider, provider, StringComparison.OrdinalIgnoreCase));
+        _links.FirstOrDefault(l => string.Equals(l.Provider, provider, StringComparison.OrdinalIgnoreCase));
 
     private static string Capitalize(string value) =>
         string.IsNullOrEmpty(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];

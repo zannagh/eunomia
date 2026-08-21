@@ -2,6 +2,7 @@ package de.zannagh.eunomia.clients;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import de.zannagh.eunomia.common.ApiVersion;
 import de.zannagh.eunomia.keyed.StoreSyncPayload;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -46,6 +47,8 @@ class HttpFallbackE2ETest {
 
     private static final Gson GSON = new Gson();
     private static final String CHANNEL = "test:e2e";
+    // The relay versions its REST surface by URL segment; /health and /ws stay unversioned.
+    private static final String PACKETS_KEYED = "/api/v" + ApiVersion.CURRENT + "/packets/keyed";
     private static final Duration RECEIVE = Duration.ofSeconds(5);
 
     private final HttpClient http = HttpClient.newHttpClient();
@@ -111,7 +114,7 @@ class HttpFallbackE2ETest {
         payload.addProperty("note", "hello");
         PacketEnvelope envelope = new PacketEnvelope(
                 scope1, "Scope One", CHANNEL, alice.toString(), true, alice.toString(), payload);
-        assertEquals(200, put("/api/packets/keyed", envelope));
+        assertEquals(200, put(PACKETS_KEYED, envelope));
 
         // Bob (same scope, not the sender) receives the relayed envelope.
         WsFrame relayed = awaitFrame(bobWs, "envelope");
@@ -134,7 +137,7 @@ class HttpFallbackE2ETest {
 
         // A put from an identity with no live socket is refused (session gate).
         PacketEnvelope spoof = new PacketEnvelope(scope1, "Scope One", CHANNEL, eve.toString(), true, eve.toString(), payload);
-        assertEquals(409, put("/api/packets/keyed", spoof));
+        assertEquals(409, put(PACKETS_KEYED, spoof));
 
         aliceWs.close();
         bobWs.close();
@@ -168,7 +171,8 @@ class HttpFallbackE2ETest {
     }
 
     private MockWs openWebSocket(UUID id, String scope) throws Exception {
-        String query = "/ws?id=" + id + "&scope=" + URLEncoder.encode(scope, StandardCharsets.UTF_8);
+        String query = "/ws?id=" + id + "&scope=" + URLEncoder.encode(scope, StandardCharsets.UTF_8)
+                + "&v=" + ApiVersion.CURRENT;
         URI uri = URI.create("ws://127.0.0.1:" + port + query);
         return new MockWs(http, uri);
     }

@@ -20,7 +20,7 @@ public class ArmorHiderFormatCompatTests : IDisposable
     private const string Scope = "mc.armorhider-smoke.test:25565";
     private const string Channel = "armorhider:config";
 
-    private static readonly string FixturesDir = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+    private static readonly string s_fixturesDir = Path.Combine(AppContext.BaseDirectory, "Fixtures");
 
     private readonly SqliteDbContextFactory _factory = new();
 
@@ -89,7 +89,7 @@ public class ArmorHiderFormatCompatTests : IDisposable
 
     private static JsonNode LoadFixture(string fileName)
     {
-        string json = File.ReadAllText(Path.Combine(FixturesDir, fileName));
+        string json = File.ReadAllText(Path.Combine(s_fixturesDir, fileName));
         return JsonNode.Parse(json)!;
     }
 

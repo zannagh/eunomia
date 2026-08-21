@@ -56,7 +56,7 @@ public static class AuthenticationServices
         services.AddSingleton<IRefreshTokenHandler, RefreshTokenHandler>();
         services.AddSingleton<ISecurityTokenHandler, JwtTokenHandler>();
 
-        services.AddScoped<AuthenticationStateProvider, Providers.CookieAuthenticationStateProvider>();
+        services.AddScoped<AuthenticationStateProvider, CookieAuthenticationStateProvider>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<IAccountLinkService, AccountLinkService>();
         services.AddScoped<IOAuthLoginService, OAuthLoginService>();
