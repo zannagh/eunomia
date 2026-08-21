@@ -47,7 +47,9 @@ public class EunomiaDbContext : DbContext
                 .HasForeignKey(l => l.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasIndex(l => new { l.Provider, l.ExternalId });
+            // A provider identity maps to at most one user; enforced in AccountLinkService.UpsertLinkAsync
+            // and backed here so a duplicate claim can never be persisted.
+            entity.HasIndex(l => new { l.Provider, l.ExternalId }).IsUnique();
         });
 
         modelBuilder.Entity<ServerRecord>(entity =>
