@@ -10,7 +10,8 @@ WORKDIR /src
 # Copy the shared build/versioning config and every csproj first so `dotnet restore` is cached across
 # source-only changes. Every project in Eunomia.Server.Web's reference graph must be listed here:
 # restore resolves ProjectReferences from disk, and a missing csproj leaves that project without a
-# project.assets.json, which only surfaces later as NETSDK1004 during the --no-restore publish.
+# project.assets.json, which only surfaces later as NETSDK1004 during publish. This restore warms the
+# NuGet package cache for the layer; the publish below deliberately restores again (see there).
 COPY Directory.Build.props Directory.Packages.props global.json .stylecop.json Directory.Versioning.targets ./
 COPY src/Eunomia.Server.Core/Eunomia.Server.Core.csproj src/Eunomia.Server.Core/
 COPY src/Eunomia.Server.Data/Eunomia.Server.Data.csproj src/Eunomia.Server.Data/
@@ -26,8 +27,15 @@ COPY src/ src/
 # Publish an optimized Release build. The git-based versioning is skipped (no .git in the build
 # context); the real semver is injected as APP_VERSION by the publish workflow (default 0.0.0 for a
 # plain `docker build`) and also applied as the image tag.
+#
+# NOT --no-restore. The restore above runs when only the .csproj files exist - no .razor files and no
+# wwwroot - and .dockerignore excludes **/obj/, so `COPY src/ src/` cannot overwrite the obj/ state it
+# left behind. A --no-restore publish then reuses that stale static web assets state and silently drops
+# the framework-provided Blazor scripts: /_framework/blazor.web.js 404s and the dashboard loses all
+# interactivity, while the app's own wwwroot still serves and the build reports success. Packages are
+# already cached in this layer by the restore above, so restoring again is cheap.
 ARG APP_VERSION=0.0.0
-RUN dotnet publish src/Eunomia.Server.Web/Eunomia.Server.Web.csproj -c Release -o /app -a $TARGETARCH --no-restore \
+RUN dotnet publish src/Eunomia.Server.Web/Eunomia.Server.Web.csproj -c Release -o /app -a $TARGETARCH \
     -p:SkipEunomiaGitVersion=true -p:Version=$APP_VERSION
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
