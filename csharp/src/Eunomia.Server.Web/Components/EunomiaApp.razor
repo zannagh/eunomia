@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <meta name="theme-color" content="#16162a" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2316162a'/%3E%3Crect x='4' y='4' width='8' height='8' rx='1' fill='%23e94560'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="css/eunomia.css" />
+    <HeadOutlet />
+    <title>Eunomia</title>
+</head>
+<body>
+    <Routes />
+
+    <div id="blazor-error-ui">
+        <span>An error occurred.</span>
+        <a href="javascript:location.reload()">Reload</a>
+        <a class="dismiss" href="javascript:void(0)"
+           onclick="document.getElementById('blazor-error-ui').style.display='none'">&times;</a>
+    </div>
+
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

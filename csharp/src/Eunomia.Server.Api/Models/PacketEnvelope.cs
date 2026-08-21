@@ -14,6 +14,9 @@ public sealed record PacketEnvelope
     /// <summary>MC-server identity, e.g. "mc.hypixel.net:25565"; partitions all data.</summary>
     public required string Scope { get; init; }
 
+    /// <summary>Human-readable server name reported by the Java client (ServerData.name); may be null.</summary>
+    public string? Name { get; init; }
+
     /// <summary>"namespace:path" channel identifier.</summary>
     public required string Channel { get; init; }
 

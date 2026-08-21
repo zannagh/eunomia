@@ -1,8 +1,10 @@
 // Copyright (c) 2026, zannagh. All rights reserved.
 // See License in the project root for license information.
 
+using System.Net.WebSockets;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Tests.TestSupport;
 
 namespace Eunomia.Server.Tests.Communication;
 
@@ -100,6 +102,34 @@ public class ConnectionManagerTests
 
         EunomiaClient replacement = NewClient("scope-replacement");
         Assert.True(manager.OnConnectionAdded(replacement, remoteIp));
+    }
+
+    [Fact]
+    public async Task CloseScopeAsync_ClosesOpenSocketsWithGivenStatus()
+    {
+        ConnectionManager manager = new();
+        RecordingWebSocket socket = new();
+        EunomiaClient client = new(Guid.NewGuid()) { Scope = "scope-a", Socket = socket };
+        manager.OnConnectionAdded(client);
+
+        await manager.CloseScopeAsync("scope-a", WebSocketCloseStatus.PolicyViolation, "server blocked");
+
+        Assert.Equal(WebSocketCloseStatus.PolicyViolation, socket.RecordedStatus);
+        Assert.Equal("server blocked", socket.RecordedReason);
+    }
+
+    [Fact]
+    public void LiveCount_ReflectsRegisteredClientsPerScope()
+    {
+        ConnectionManager manager = new();
+        manager.OnConnectionAdded(NewClient("scope-a"));
+        manager.OnConnectionAdded(NewClient("scope-a"));
+        manager.OnConnectionAdded(NewClient("scope-b"));
+
+        Assert.Equal(2, manager.LiveCount("scope-a"));
+        Assert.Equal(1, manager.LiveCount("scope-b"));
+        Assert.Equal(0, manager.LiveCount("scope-c"));
+        Assert.Contains("scope-a", manager.ActiveScopes());
     }
 
     private static EunomiaClient NewClient(string scope)

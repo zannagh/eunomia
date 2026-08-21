@@ -1,0 +1,10 @@
+@inject NavigationManager Navigation
+
+@code {
+    // A full-page load (not an in-circuit nav) so the cookie challenge and the /oauth-select
+    // static-SSR login page are served fresh rather than routed inside the SignalR circuit.
+    protected override void OnInitialized()
+    {
+        Navigation.NavigateTo("/account/login", forceLoad: true);
+    }
+}

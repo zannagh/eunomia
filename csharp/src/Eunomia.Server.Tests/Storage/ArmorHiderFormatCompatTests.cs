@@ -4,7 +4,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Eunomia.Server.Core.Storage;
-using Microsoft.Extensions.Logging.Abstractions;
+using Eunomia.Server.Data.Storage;
+using Eunomia.Server.Tests.TestSupport;
 
 namespace Eunomia.Server.Tests.Storage;
 
@@ -21,14 +22,11 @@ public class ArmorHiderFormatCompatTests : IDisposable
 
     private static readonly string FixturesDir = Path.Combine(AppContext.BaseDirectory, "Fixtures");
 
-    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "eunomia-armorhider-tests-" + Guid.NewGuid());
+    private readonly SqliteDbContextFactory _factory = new();
 
     public void Dispose()
     {
-        if (Directory.Exists(_dataDir))
-        {
-            Directory.Delete(_dataDir, recursive: true);
-        }
+        _factory.Dispose();
     }
 
     [Fact]
@@ -38,7 +36,7 @@ public class ArmorHiderFormatCompatTests : IDisposable
         string playerId = original["playerId"]!.GetValue<string>();
         JsonElement payload = JsonSerializer.Deserialize<JsonElement>(original.ToJsonString());
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         store.Put(Scope, Channel, playerId, payload);
 
         StoreSyncPayload snapshot = Assert.Single(store.SnapshotFor(Scope));
@@ -48,16 +46,16 @@ public class ArmorHiderFormatCompatTests : IDisposable
     }
 
     [Fact]
-    public void Put_ClientConfig_RoundTripsLosslessly_AcrossDiskReload()
+    public void Put_ClientConfig_RoundTripsLosslessly_AcrossDatabaseReload()
     {
         JsonNode original = LoadFixture("client-config.json");
         string playerId = original["playerId"]!.GetValue<string>();
         JsonElement payload = JsonSerializer.Deserialize<JsonElement>(original.ToJsonString());
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         store.Put(Scope, Channel, playerId, payload);
 
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore reloaded = new(_factory);
         StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(Scope));
         JsonNode roundTripped = JsonNode.Parse(snapshot.Entries[playerId])!;
 
@@ -70,7 +68,7 @@ public class ArmorHiderFormatCompatTests : IDisposable
         JsonNode serverDictionary = LoadFixture("server-dictionary.json");
         JsonObject playerConfigs = serverDictionary["playerConfigs"]!.AsObject();
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         foreach (KeyValuePair<string, JsonNode?> entry in playerConfigs)
         {
             JsonElement payload = JsonSerializer.Deserialize<JsonElement>(entry.Value!.ToJsonString());

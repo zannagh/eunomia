@@ -22,6 +22,15 @@ public final class LocalClientIdentity {
         return data == null ? null : data.ip;
     }
 
+    /**
+     * The player's human-readable label for the connected server (the name in the server list entry), or
+     * {@code null} in singleplayer/LAN. Sent to the relay for display only; the scope still partitions the data.
+     */
+    public static String currentServerName(Minecraft client) {
+        ServerData data = client.getCurrentServer();
+        return data == null ? null : data.name;
+    }
+
     /** The local player's account UUID. */
     public static UUID localPlayerId(Minecraft client) {
         return client.getUser().getProfileId();

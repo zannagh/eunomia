@@ -317,6 +317,25 @@ public final class CommunicationManager {
     }
 
     /**
+     * Client-side: tell the send gate whether the external relay transport is the active send path. The
+     * client transport selector calls this after installing (or tearing down) the relay, so sends parked
+     * while the fallback was being decided flush to the relay instead of being dropped. Activating also
+     * makes subsequent gated sends dispatch to the relay regardless of the (absent) Minecraft capability.
+     */
+    public static void setExternalTransportActive(boolean active) {
+        ClientSendGate.setExternalTransportActive(active);
+    }
+
+    /**
+     * Client-side: tell the send gate the fallback decision concluded "no relay" - the server does not run
+     * Eunomia and no relay is usable (not opted in, unreachable, or hard-blocked). Drops sends parked behind
+     * the gate and suppresses further gated sends for the rest of the connection.
+     */
+    public static void concludeNoRelay() {
+        ClientSendGate.concludeNoRelay();
+    }
+
+    /**
      * Client-side: tear down per-connection state when the play connection ends. Resets the capability
      * view and drops any sends still queued behind the gate, so nothing leaks into the next connection.
      * Call from the client disconnect handler.

@@ -512,3 +512,9 @@ dotnet-install.sh
 # appsettings.Development.json, which stays ignored by the rule above.
 !csharp/src/Eunomia.Server.Web/appsettings.json
 
+# docker-compose runtime state and secrets for the C# server (never commit these).
+.env
+**/.env
+csharp/pgdata/
+csharp/dpkeys/
+

@@ -1,0 +1,31 @@
+@inherits LayoutComponentBase
+
+<div class="eu-shell">
+    <header class="eu-topbar">
+        <a href="/dashboard" class="eu-brand">
+            <span class="eu-brand-mark"></span>
+            <span class="eu-brand-text">Eunomia</span>
+        </a>
+        <nav class="eu-nav">
+            <AuthorizeView Policy="@AuthorizationPolicies.StaffOnly">
+                <a href="/dashboard" class="eu-nav-link">Dashboard</a>
+            </AuthorizeView>
+            <AuthorizeView Policy="@AuthorizationPolicies.AdminOnly">
+                <a href="/admin/users" class="eu-nav-link">Users</a>
+            </AuthorizeView>
+            <AuthorizeView>
+                <Authorized>
+                    <a href="/profile" class="eu-nav-link">Profile</a>
+                    <a href="/account/logout" class="eu-nav-link eu-nav-muted">Logout</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/account/login" class="eu-nav-link">Login</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </nav>
+    </header>
+
+    <main class="eu-main">
+        @Body
+    </main>
+</div>

@@ -1,0 +1,57 @@
+# Local/dev stack for the Eunomia C# server: Postgres, the app, and an Aspire OTLP dashboard.
+#
+# Passwords here are dev placeholders only - override POSTGRES__PASSWORD (and the postgres
+# POSTGRES_PASSWORD) with real secrets via a gitignored .env or your deployment's secret store
+# before exposing this anywhere. Bring it up from the csharp/ directory: `docker compose up -d`.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: eunomia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: eunomia_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - eunomia-pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Not for a public endpoint: DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS drops the login token and
+  # OTLP auth so it "just works" on the internal network. Traces/metrics are kept in-memory (a rolling
+  # window) - handy for ad-hoc debugging, gone on restart.
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"   # web UI — open http://localhost:18888
+      - "18889:18889"   # OTLP/gRPC ingest
+    restart: unless-stopped
+
+  eunomia:
+    # Build the local source; swap for `image: ghcr.io/zannagh/eunomia:latest` to run a published build.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://aspire-dashboard:18889"
+      OTEL_SERVICE_NAME: Eunomia
+      POSTGRES__HOST: postgres
+      POSTGRES__PORT: "5432"
+      POSTGRES__DATABASE: eunomia
+      POSTGRES__USERNAME: postgres
+      POSTGRES__PASSWORD: eunomia_dev
+    volumes:
+      # Persist the DataProtection key ring across redeploys (written by the auth layer) so a deploy
+      # no longer logs everyone out / breaks in-flight logins.
+      - ./dpkeys:/app/keys
+    depends_on:
+      - postgres
+      - aspire-dashboard
+    restart: unless-stopped
+
+volumes:
+  eunomia-pgdata:

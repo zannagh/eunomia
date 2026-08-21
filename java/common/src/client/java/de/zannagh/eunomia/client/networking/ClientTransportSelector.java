@@ -37,38 +37,49 @@ public final class ClientTransportSelector {
     private static void onCapabilityResolved(ServerCapabilities capabilities) {
         Minecraft client = Minecraft.getInstance();
         if (capabilities.isPresent()) {
-            // The MC server speaks Eunomia - never use the third-party relay alongside it.
+            // The MC server speaks Eunomia - never use the third-party relay alongside it. Sends parked
+            // behind the gate flush to the Minecraft transport on this (present) resolution.
             useMinecraftTransport();
             return;
         }
         EunomiaConfig config = Eunomia.getConfig();
         if (!config.externalFallbackEnabled() || !config.hasExternalServerAddress()) {
-            useMinecraftTransport();
+            // Server is not Eunomia and the player has not opted into the relay: no destination.
+            abandonFallback();
             return;
         }
         String scope = LocalClientIdentity.currentServerScope(client);
         var playerId = LocalClientIdentity.localPlayerId(client);
         if (scope == null) {
-            useMinecraftTransport();
+            abandonFallback();
             return;
         }
+        String rawName = LocalClientIdentity.currentServerName(client);
+        String name = (rawName == null || rawName.isBlank()) ? scope : rawName;
         String address = config.externalServerAddress();
-        // Reachability probe blocks, so decide off the client thread.
+        // Reachability probe blocks, so decide off the client thread. Until it lands, gated sends stay
+        // parked (an absent resolution does not drop them) so a config sent on join reaches the relay.
         CompletableFuture.runAsync(() -> {
             if (!PingClient.isReachable(address)) {
                 Eunomia.LOGGER.info("External relay {} not reachable; staying on the Minecraft transport", address);
+                abandonFallback();
                 return;
             }
-            startExternal(address, scope, playerId);
+            startExternal(address, scope, name, playerId);
         });
     }
 
-    private static synchronized void startExternal(String address, String scope, UUID playerId) {
+    private static synchronized void startExternal(String address, String scope, String name, UUID playerId) {
         stopExternal();
-        ExternalServerClient client = new ExternalServerClient(address, scope, playerId, Eunomia.LOGGER);
+        // On a hard block (HTTP 403 / WS 1008) the relay client hands control back here to restore vanilla
+        // transport for the rest of the session; abandonFallback is idempotent and thread-safe.
+        ExternalServerClient client = new ExternalServerClient(
+                address, scope, name, playerId, Eunomia.LOGGER, ClientTransportSelector::abandonFallback);
         client.start();
         external = client;
         CommunicationManager.setClientTransport(new ExternalClientTransport(client));
+        // The relay is now the destination: flush anything parked on join to it, and route future sends there.
+        CommunicationManager.setExternalTransportActive(true);
         Eunomia.LOGGER.info("Routing Eunomia through external relay {} (scope {})", address, scope);
     }
 
@@ -82,6 +93,16 @@ public final class ClientTransportSelector {
     private static synchronized void useMinecraftTransport() {
         stopExternal();
         CommunicationManager.setClientTransport(MC);
+    }
+
+    /**
+     * Restore the Minecraft transport AND tell the gate the fallback concluded with no relay, so sends parked
+     * on join are dropped rather than lingering. For the "server is not Eunomia and no usable relay" outcomes:
+     * not opted in, unreachable, or hard-blocked by the relay.
+     */
+    private static synchronized void abandonFallback() {
+        useMinecraftTransport();
+        CommunicationManager.concludeNoRelay();
     }
 
     /** Restores the Minecraft transport and closes any relay connection. Call on client disconnect. */

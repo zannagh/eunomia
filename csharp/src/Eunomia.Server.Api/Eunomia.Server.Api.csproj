@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Eunomia.Server.Core\Eunomia.Server.Core.csproj" />
+    <!-- For the shared AuthorizationPolicies constants applied to the admin/telemetry endpoints. -->
+    <ProjectReference Include="..\Eunomia.Server.Authentication\Eunomia.Server.Authentication.csproj" />
   </ItemGroup>
 
 </Project>

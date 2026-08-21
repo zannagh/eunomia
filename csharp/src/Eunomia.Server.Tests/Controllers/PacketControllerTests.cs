@@ -6,10 +6,14 @@ using Eunomia.Server.Api.Controllers;
 using Eunomia.Server.Api.Models;
 using Eunomia.Server.Core.Clients;
 using Eunomia.Server.Core.Communication;
+using Eunomia.Server.Core.Servers;
 using Eunomia.Server.Core.Storage;
+using Eunomia.Server.Data.Storage;
+using Eunomia.Server.Tests.TestSupport;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 
 namespace Eunomia.Server.Tests.Controllers;
 
@@ -18,21 +22,19 @@ namespace Eunomia.Server.Tests.Controllers;
 /// <see cref="DefaultHttpContext"/> stands in for the request, a real <see cref="ConnectionManager"/>
 /// with a null-socket <see cref="EunomiaClient"/> registered stands in for "has a live WS session"
 /// (its SendAsync/broadcast path is a safe no-op with a null socket), and a real
-/// <see cref="KeyedPacketStore"/> proves keyed puts actually land in the store.
+/// <see cref="PgKeyedPacketStore"/> (over an in-process SQLite database) proves keyed puts actually
+/// land in the store.
 /// </summary>
 public class PacketControllerTests : IDisposable
 {
     private const string Scope = "mc.controller-tests:25565";
     private const string Channel = "eunomia:controller-test";
 
-    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "eunomia-controller-tests-" + Guid.NewGuid());
+    private readonly SqliteDbContextFactory _factory = new();
 
     public void Dispose()
     {
-        if (Directory.Exists(_dataDir))
-        {
-            Directory.Delete(_dataDir, recursive: true);
-        }
+        _factory.Dispose();
     }
 
     [Fact]
@@ -134,12 +136,55 @@ public class PacketControllerTests : IDisposable
         Assert.True(snapshot.Entries.ContainsKey("player-1"));
     }
 
-    private IKeyedPacketStore NewStore()
+    [Fact]
+    public async Task NotificationAsync_BlockedScope_Returns403()
     {
-        return new KeyedPacketStore(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        ConnectionManager connectionManager = new();
+        Guid senderId = Guid.NewGuid();
+        connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
+        PacketController controller = CreateController(connectionManager, NewStore(), blockService: BlockedFor(Scope));
+        PacketEnvelope env = NewEnvelope(sender: senderId.ToString());
+
+        IActionResult result = await controller.NotificationAsync(env);
+
+        StatusCodeResult statusResult = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);
     }
 
-    private static PacketController CreateController(ConnectionManager connectionManager, IKeyedPacketStore store, long? contentLength = null)
+    [Fact]
+    public async Task KeyedNotificationAsync_BlockedScope_Returns403_AndDoesNotStore()
+    {
+        ConnectionManager connectionManager = new();
+        Guid senderId = Guid.NewGuid();
+        connectionManager.OnConnectionAdded(new EunomiaClient(senderId) { Scope = Scope });
+        IKeyedPacketStore store = NewStore();
+        PacketController controller = CreateController(connectionManager, store, blockService: BlockedFor(Scope));
+        PacketEnvelope env = NewEnvelope(sender: senderId.ToString(), key: "player-1");
+
+        IActionResult result = await controller.KeyedNotificationAsync(env);
+
+        StatusCodeResult statusResult = Assert.IsType<StatusCodeResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);
+        Assert.Empty(store.SnapshotFor(Scope));
+    }
+
+    private IKeyedPacketStore NewStore()
+    {
+        return new PgKeyedPacketStore(_factory);
+    }
+
+    private static IServerBlockService BlockedFor(string blockedScope)
+    {
+        IServerBlockService blockService = Substitute.For<IServerBlockService>();
+        blockService.IsBlocked(blockedScope).Returns(true);
+        return blockService;
+    }
+
+    private static PacketController CreateController(
+        ConnectionManager connectionManager,
+        IKeyedPacketStore store,
+        long? contentLength = null,
+        IServerBlockService? blockService = null)
     {
         DefaultHttpContext httpContext = new();
         if (contentLength.HasValue)
@@ -147,7 +192,11 @@ public class PacketControllerTests : IDisposable
             httpContext.Request.ContentLength = contentLength;
         }
 
-        return new PacketController(connectionManager, store)
+        return new PacketController(
+            connectionManager,
+            store,
+            blockService ?? Substitute.For<IServerBlockService>(),
+            NullLogger<PacketController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext },
         };

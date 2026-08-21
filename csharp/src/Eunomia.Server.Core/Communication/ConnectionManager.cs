@@ -2,6 +2,7 @@
 // See License in the project root for license information.
 
 using System.Collections.Concurrent;
+using System.Net.WebSockets;
 using Eunomia.Server.Core.Clients;
 
 namespace Eunomia.Server.Core.Communication;
@@ -69,6 +70,55 @@ public class ConnectionManager
     {
         return _clientsByScope.TryGetValue(scope, out ConcurrentDictionary<Guid, EunomiaClient>? scopeClients)
             && scopeClients.ContainsKey(id);
+    }
+
+    /// <summary>
+    /// Returns the number of live websocket sessions in <paramref name="scope"/>.
+    /// </summary>
+    public int LiveCount(string scope)
+    {
+        return _clientsByScope.TryGetValue(scope, out ConcurrentDictionary<Guid, EunomiaClient>? scopeClients)
+            ? scopeClients.Count
+            : 0;
+    }
+
+    /// <summary>
+    /// Returns the scopes that currently have at least one live websocket session.
+    /// </summary>
+    public IReadOnlyCollection<string> ActiveScopes()
+    {
+        return _clientsByScope
+            .Where(pair => !pair.Value.IsEmpty)
+            .Select(pair => pair.Key)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Closes every live socket in <paramref name="scope"/> with the given status and reason, used to
+    /// evict connections when a scope is blocked. Best-effort; dead sockets are removed rather than
+    /// throwing.
+    /// </summary>
+    public async Task CloseScopeAsync(string scope, WebSocketCloseStatus status, string reason)
+    {
+        if (!_clientsByScope.TryGetValue(scope, out ConcurrentDictionary<Guid, EunomiaClient>? scopeClients))
+        {
+            return;
+        }
+
+        foreach (EunomiaClient client in scopeClients.Values)
+        {
+            try
+            {
+                if (client.Socket is { State: WebSocketState.Open })
+                {
+                    await client.Socket.CloseAsync(status, reason, CancellationToken.None);
+                }
+            }
+            catch (Exception)
+            {
+                scopeClients.TryRemove(client.Id, out _);
+            }
+        }
     }
 
     /// <summary>

@@ -3,26 +3,24 @@
 
 using System.Text.Json;
 using Eunomia.Server.Core.Storage;
-using Microsoft.Extensions.Logging.Abstractions;
+using Eunomia.Server.Data.Storage;
+using Eunomia.Server.Tests.TestSupport;
 
 namespace Eunomia.Server.Tests.Storage;
 
-public class KeyedPacketStoreTests : IDisposable
+public class PgKeyedPacketStoreTests : IDisposable
 {
-    private readonly string _dataDir = Path.Combine(Path.GetTempPath(), "eunomia-tests-" + Guid.NewGuid());
+    private readonly SqliteDbContextFactory _factory = new();
 
     public void Dispose()
     {
-        if (Directory.Exists(_dataDir))
-        {
-            Directory.Delete(_dataDir, recursive: true);
-        }
+        _factory.Dispose();
     }
 
     [Fact]
     public void Put_IsolatesEntriesByScope()
     {
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = ParsePayload("""{"value":1}""");
 
         store.Put("scope-a", "ns:channel", "key1", payload);
@@ -40,7 +38,7 @@ public class KeyedPacketStoreTests : IDisposable
     [Fact]
     public void SnapshotFor_UnknownScope_ReturnsEmpty()
     {
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         IReadOnlyList<StoreSyncPayload> snapshot = store.SnapshotFor("does-not-exist");
 
@@ -50,7 +48,7 @@ public class KeyedPacketStoreTests : IDisposable
     [Fact]
     public void SnapshotFor_ReturnsOnePayloadPerChannel_WithRawJsonEntries()
     {
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
         JsonElement payload = ParsePayload("""{"value":42}""");
 
         store.Put("mc.hypixel.net:25565", "eunomia:one", "keyA", payload);
@@ -66,7 +64,7 @@ public class KeyedPacketStoreTests : IDisposable
     [Fact]
     public void Put_SameScopeChannelKey_OverwritesPreviousValue()
     {
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         store.Put("scope", "ns:chan", "key1", ParsePayload("""{"value":1}"""));
         store.Put("scope", "ns:chan", "key1", ParsePayload("""{"value":2}"""));
@@ -78,15 +76,15 @@ public class KeyedPacketStoreTests : IDisposable
     [Fact]
     public void PersistedEntries_SurviveAcrossStoreInstances()
     {
-        // The scope contains ':' which is sanitized for the file path; loading must recover
-        // the original unsanitized scope so a fresh store can still find it.
+        // A fresh store over the same database must see rows written by an earlier instance - the
+        // direct analog of the old "reload from disk" check, now proving DB persistence.
         const string scope = "mc.hypixel.net:25565";
         JsonElement payload = ParsePayload("""{"restored":true}""");
 
-        KeyedPacketStore original = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore original = new(_factory);
         original.Put(scope, "eunomia:profile", "player1", payload);
 
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore reloaded = new(_factory);
         StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
 
         Assert.Equal("eunomia:profile", snapshot.Channel);
@@ -100,16 +98,15 @@ public class KeyedPacketStoreTests : IDisposable
         const string channel = "eunomia:stress";
         const int writerCount = 64;
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         await Task.WhenAll(Enumerable.Range(0, writerCount).Select(i => Task.Run(() =>
         {
             store.Put(scope, channel, $"key-{i}", ParsePayload($$"""{"index":{{i}}}"""));
         })));
 
-        // A fresh instance reading the file back proves it's complete, valid JSON on disk - not
-        // just correct in the in-memory dictionary.
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        // A fresh instance reading the database back proves every write committed intact.
+        PgKeyedPacketStore reloaded = new(_factory);
         StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
 
         Assert.Equal(writerCount, snapshot.Entries.Count);
@@ -127,14 +124,14 @@ public class KeyedPacketStoreTests : IDisposable
         const string key = "shared-key";
         const int writerCount = 64;
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         await Task.WhenAll(Enumerable.Range(0, writerCount).Select(i => Task.Run(() =>
         {
             store.Put(scope, channel, key, ParsePayload($$"""{"writer":{{i}}}"""));
         })));
 
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore reloaded = new(_factory);
         StoreSyncPayload snapshot = Assert.Single(reloaded.SnapshotFor(scope));
 
         // Exactly one entry survives (last writer wins); it must be intact, valid JSON from one of
@@ -153,7 +150,7 @@ public class KeyedPacketStoreTests : IDisposable
         const int taskCount = 8;
         const int putsPerTask = 200;
 
-        KeyedPacketStore store = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        PgKeyedPacketStore store = new(_factory);
 
         // Every (task, i) pair gets a globally unique key, spread pseudo-randomly across every
         // (scope, channel) combination, so we know exactly how many entries each combo must end up
@@ -190,13 +187,13 @@ public class KeyedPacketStoreTests : IDisposable
 
         AssertMatchesExpected(store, scopes, expected);
 
-        // Fresh instance over the same dir proves every channel file on disk is complete and valid.
-        KeyedPacketStore reloaded = new(NullLogger<KeyedPacketStore>.Instance, _dataDir);
+        // Fresh instance over the same database proves every row committed and is readable.
+        PgKeyedPacketStore reloaded = new(_factory);
         AssertMatchesExpected(reloaded, scopes, expected);
     }
 
     private static void AssertMatchesExpected(
-        KeyedPacketStore store, string[] scopes, Dictionary<(string Scope, string Channel), HashSet<string>> expected)
+        PgKeyedPacketStore store, string[] scopes, Dictionary<(string Scope, string Channel), HashSet<string>> expected)
     {
         foreach (string scope in scopes)
         {

@@ -1,0 +1,25 @@
+@* Shown when a user IS authenticated but lacks the role for the requested page. Distinct from the
+   login redirect (RedirectToLogin), which is only for unauthenticated visitors. *@
+
+<PageTitle>Access denied - Eunomia</PageTitle>
+
+<div class="eu-login">
+    <div class="eu-login-card">
+        <div class="eu-login-head">
+            <span class="eu-brand-mark eu-brand-mark-lg"></span>
+            <h1>Access denied</h1>
+            <p>Insufficient role</p>
+        </div>
+
+        <div class="eu-alert eu-alert-danger" role="alert">
+            You don't have permission to view this page — your role is insufficient. Contact an admin.
+        </div>
+
+        <div class="eu-providers">
+            <a href="/" class="eu-provider">Back to dashboard</a>
+            <a href="/account/logout" class="eu-provider" rel="nofollow">Sign out</a>
+        </div>
+
+        <p class="eu-login-foot">Signed in, but not authorized</p>
+    </div>
+</div>

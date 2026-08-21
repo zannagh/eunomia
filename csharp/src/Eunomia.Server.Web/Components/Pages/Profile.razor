@@ -1,0 +1,78 @@
+@page "/profile"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject ICurrentUserService CurrentUserService
+@inject IAccountLinkService AccountLinkService
+
+<PageTitle>Profile - Eunomia</PageTitle>
+
+<div class="eu-page">
+    <div class="eu-page-head"><h1>Profile</h1></div>
+
+    @if (user is null)
+    {
+        <div class="eu-empty">Loading...</div>
+    }
+    else
+    {
+        <div class="eu-profile-card">
+            <div class="eu-avatar">@AvatarInitial</div>
+            <div>
+                <div class="eu-profile-name">@user.DisplayName</div>
+                <span class="eu-badge eu-badge-role">@user.Role</span>
+                <div class="eu-muted eu-mono">@user.Identifier</div>
+            </div>
+        </div>
+
+        <section class="eu-section">
+            <h2>Linked accounts</h2>
+            <div class="eu-links">
+                @foreach (string provider in LinkableProviders)
+                {
+                    UserExternalLink? link = FindLink(provider);
+                    <div class="eu-link-row">
+                        <span class="eu-link-provider">@Capitalize(provider)</span>
+                        @if (link is not null)
+                        {
+                            <span class="eu-link-handle">@(string.IsNullOrEmpty(link.Handle) ? link.ExternalId : link.Handle)</span>
+                            <span class="eu-badge eu-badge-ok">Linked</span>
+                        }
+                        else
+                        {
+                            <a class="eu-btn" href="/account/link/@provider">Link @Capitalize(provider)</a>
+                        }
+                    </div>
+                }
+                @if (LinkableProviders.Count == 0)
+                {
+                    <div class="eu-muted">No link providers are enabled.</div>
+                }
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    private User? user;
+    private IReadOnlyList<UserExternalLink> links = [];
+
+    // Modrinth doubles as a login provider; Discord is link-only. Both are offered when enabled.
+    private static readonly string[] CandidateProviders = ["modrinth", "discord"];
+
+    private char AvatarInitial => string.IsNullOrEmpty(user?.DisplayName) ? '?' : char.ToUpperInvariant(user!.DisplayName[0]);
+
+    private List<string> LinkableProviders =>
+        CandidateProviders.Where(AccountLinkService.IsLinkable).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await CurrentUserService.GetCurrentUserAsync();
+        links = await AccountLinkService.GetLinksAsync(user.Id);
+    }
+
+    private UserExternalLink? FindLink(string provider) =>
+        links.FirstOrDefault(l => string.Equals(l.Provider, provider, StringComparison.OrdinalIgnoreCase));
+
+    private static string Capitalize(string value) =>
+        string.IsNullOrEmpty(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+}
