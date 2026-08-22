@@ -52,9 +52,9 @@
        the caller is expected to inject the version via -p:Version=... instead. Default (unset) keeps
        the normal GitVersion behavior. -->
   <Target Name="GlobalVersioningInit" AfterTargets="DecideVersioningBehavior"
-          Condition="'$(SkipEunomiaGitVersion)' != 'true' and (!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true')">
+          Condition="'$(SkipEunomiaGitVersion)' != 'true' and ('$(RunGitVersion)' == 'true')">
     <Message Importance="high" Text="Running global versioning init."
-             Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'" />
+             Condition="'$(RunGitVersion)' == 'true'" />
     <PropertyGroup>
       <GitVersionToolInstalled Condition="Exists($(GitVersionMarkerFile))">true</GitVersionToolInstalled>
     </PropertyGroup>
@@ -77,14 +77,14 @@
              Text="🔧 GitVersion.Tool installed: $(GitVersionToolInstalled)" />
 
     <Message Text="Operating GitVersion in: $(RepositoryRoot)" Importance="High"
-             Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'" />
-    <Exec Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'"
+             Condition="'$(RunGitVersion)' == 'true'" />
+    <Exec Condition="'$(RunGitVersion)' == 'true'"
           Command="$(GitVersionTool) /output json" StdOutEncoding="utf-8" StdErrEncoding="utf-8"
           ConsoleToMsBuild="true" WorkingDirectory="$(RepositoryRoot)">
       <Output TaskParameter="ConsoleOutput" PropertyName="GitVersionJson" />
     </Exec>
 
-    <WriteLinesToFile Condition="!Exists($(GitVersionMarkerFile)) or $(RunGitVersion) == 'true'"
+    <WriteLinesToFile Condition="'$(RunGitVersion)' == 'true'"
                       File="$(GitVersionMarkerFile)" Lines="$(GitVersionJson)" Overwrite="true" Encoding="UTF-8" />
   </Target>
 
