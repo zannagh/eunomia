@@ -19,7 +19,21 @@ final class StoreSyncClient {
 
     private static volatile boolean registered = false;
 
+    static {
+        // Runs once, on first use. CommunicationManager.resetForTesting() clears its own handler maps, which
+        // silently unbinds the handler ensureRegistered() installed below - but `registered` would stay true, so
+        // the next enableClient() would skip re-binding and every inbound store_sync frame would be dropped with
+        // no listener and no error. Hooking the reset keeps this flag honest about whether the handler is live.
+        CommunicationManager.registerResetHook(StoreSyncClient::resetForTesting);
+    }
+
     private StoreSyncClient() {
+    }
+
+    /** Returns this client to its unregistered state so a later {@link #ensureRegistered()} rebinds. */
+    private static synchronized void resetForTesting() {
+        BINDINGS.clear();
+        registered = false;
     }
 
     static synchronized void ensureRegistered() {

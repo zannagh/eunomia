@@ -155,4 +155,34 @@ class ReplicatedKeyedStoreTest {
                 CHANNEL.channelKey(), new TestEntry(ALICE, 9), new TestClientContext());
         assertEquals(9, mirror.store().get(KeyPath.of(ALICE)).orElseThrow().value);
     }
+
+    /**
+     * Regression: {@code resetForTesting()} must also unregister the shared {@code store_sync} handler.
+     *
+     * <p>{@link StoreSyncClient} binds that handler once, guarded by a static flag. Before the reset hook existed,
+     * clearing the manager's handler maps left the flag set, so the next {@code enableClient()} skipped rebinding
+     * and every inbound snapshot was dropped with no listener and no error. The damage was invisible and
+     * order-dependent: whichever test enabled a mirror first passed, and the next one to rely on a snapshot failed
+     * on an assertion that pointed at the store rather than at the reset.</p>
+     */
+    @Test
+    void aMirrorEnabledAfterAResetStillReceivesSnapshots() {
+        new ReplicatedClientStore<>(1, TestEntry.class, CHANNEL).enableClient();
+
+        // Exactly what a test harness does between cases - and what used to strand the store_sync handler.
+        CommunicationManager.resetForTesting();
+        NetworkSerializer.setGson(new Gson());
+
+        ReplicatedClientStore<TestEntry> rebound =
+                new ReplicatedClientStore<>(1, TestEntry.class, CHANNEL).enableClient();
+        StoreSyncPayload sync = new ReplicatedKeyedStore<>(1, TestEntry.class, CHANNEL) {{
+            put(KeyPath.of(BOB), new TestEntry(BOB, 11));
+        }}.snapshotPayload();
+
+        assertTrue(CommunicationManager.dispatchClientbound(
+                        StoreSyncPackets.STORE_SYNC.channelKey(), sync, new TestClientContext()),
+                "the store_sync handler must be rebound after a reset, not left on the discarded manager");
+        assertEquals(11, rebound.store().get(KeyPath.of(BOB)).orElseThrow().value,
+                "a mirror enabled after a reset must still receive snapshots");
+    }
 }

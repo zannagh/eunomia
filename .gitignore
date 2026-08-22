@@ -69,7 +69,10 @@ BRIEF.md
 PLATFORM.md
 INSTRUCTIONS.md
 
+# GitVersion writes this build artifact into the working tree on every version calculation, so it is
+# generated output, never source. Both spellings: it is emitted at the repo root and inside subprojects.
 .gitversion.done
+**/.gitversion.done
 .secrets.md
 
 
