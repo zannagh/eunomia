@@ -47,6 +47,17 @@ public final class CommunicationManager {
     private static final ConcurrentHashMap<String, ServerPacketHandler<?>> SERVER_HANDLERS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, ClientPacketHandler<?>> CLIENT_HANDLERS = new ConcurrentHashMap<>();
 
+    /**
+     * Teardown callbacks run by {@link #resetForTesting()}.
+     *
+     * <p>Subsystems outside this package cache their own registration state - most notably the one-shot flag that
+     * binds the shared {@code eunomia:store_sync} handler. Clearing the handler maps below without clearing that
+     * state leaves the subsystem believing it is still wired to a manager that has forgotten it, so its packets
+     * arrive and are dropped in silence. A hook registry lets those subsystems opt into the reset without this
+     * class having to depend on them (which would invert the package dependency).</p>
+     */
+    private static final java.util.Set<Runnable> RESET_HOOKS = ConcurrentHashMap.newKeySet();
+
     private static volatile Consumer<PacketType<?>> registrationListener;
     private static volatile ServerTransport serverTransport;
     private static volatile ClientTransport clientTransport;
@@ -361,7 +372,20 @@ public final class CommunicationManager {
         return transport;
     }
 
-    /** Clears all registrations and wiring. Intended for tests only. */
+    /**
+     * Registers a teardown callback to be run by {@link #resetForTesting()}.
+     *
+     * <p>For subsystems that cache registration state of their own and would otherwise survive a reset in an
+     * inconsistent form. Hooks are de-duplicated, so registering from a static initialiser is safe. Intended for
+     * internal wiring rather than consumer code.</p>
+     *
+     * @param hook The callback that restores the subsystem to its unregistered state.
+     */
+    public static void registerResetHook(Runnable hook) {
+        RESET_HOOKS.add(hook);
+    }
+
+    /** Clears all registrations and wiring, including subsystem state held outside this class. Tests only. */
     public static void resetForTesting() {
         TYPES.clear();
         SERVER_HANDLERS.clear();
@@ -371,5 +395,7 @@ public final class CommunicationManager {
         clientTransport = null;
         SERVER_CAPABILITIES.reset();
         ClientSendGate.reset();
+        // Last: a hook may re-derive state from the fields cleared above, so let them settle first.
+        RESET_HOOKS.forEach(Runnable::run);
     }
 }

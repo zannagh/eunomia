@@ -36,6 +36,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # GitVersion needs full history; every other workflow here does the same.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5

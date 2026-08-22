@@ -1,23 +1,32 @@
 # deploy-hook
 
 A tiny [`webhook`](https://github.com/adnanh/webhook) receiver that auto-deploys the Eunomia server
-when a new image is published to GHCR. It verifies GitHub's HMAC signature, then runs
-`docker compose pull eunomia && docker compose up -d eunomia` against the host docker daemon.
+on an actual GitHub release. It verifies GitHub's HMAC signature, waits until CI has published the
+new image to GHCR, then recreates the `eunomia` service against the host docker daemon.
 
 The published image is `ghcr.io/zannagh/eunomia/eunomia-server` (see `.github/workflows/docker-publish.yml`),
-tagged `:latest` on a GitHub release and `:prerelease` on a push to `main`.
+tagged `:latest` on a GitHub release and `:prerelease` on a push to `main`. Only `:latest` is
+deployed, so prereleases never reach the server.
 
 ## Flow
 
 ```
-GitHub release/package published
+GitHub release published (non-prerelease)
   └─ POST  https://<your-domain>/ci/released   (X-Hub-Signature-256, JSON body)
        └─ reverse proxy routes /ci/released → <host>:9000
             └─ deploy-hook container (this service, serving /ci/{id} via -urlprefix ci)
-                 ├─ verify HMAC against $WEBHOOK_SECRET   → reject if it doesn't match
-                 ├─ require payload.action == "published" → ignore pings / edits
-                 └─ docker compose pull eunomia && up -d eunomia   (host daemon via socket)
+                 ├─ verify HMAC against $WEBHOOK_SECRET  → reject if it doesn't match
+                 ├─ require payload.action == "released" → actual releases only, not prereleases
+                 └─ poll GHCR until :latest is newer than the running image, then
+                    docker compose up -d eunomia   (host daemon via socket, base + override)
 ```
+
+`action == "released"` is the key filter: GitHub fires `published` for both releases *and*
+prereleases, but `released` fires **only for actual (non-pre) releases** (and prerelease→release
+promotions). Because that event arrives the instant you click publish — before CI has built the
+image — `run-deploy.sh` polls GHCR for up to `DEPLOY_WAIT_TIMEOUT` seconds (default 2400) and only
+recreates once the pulled `:latest` differs from the running image. If CI never produces a new image
+(e.g. the build fails), it times out and leaves the current deployment untouched.
 
 The receiver serves hooks at `/ci/<id>` (`-urlprefix ci`); this hook's id is `released`, so the
 path is **`/ci/released`** — matching the configured GitHub Payload URL.
@@ -27,7 +36,8 @@ path is **`/ci/released`** — matching the configured GitHub Payload URL.
 1. **Secret.** `openssl rand -hex 32`, put it in `csharp/.env` as `WEBHOOK_SECRET=…`, and paste the
    **same** value into the webhook's *Secret* field on GitHub (repo → Settings → Webhooks). Set the
    Payload URL to `https://<your-domain>/ci/released`, content type `application/json`, and let it
-   send **Releases** events (optionally Packages too).
+   send **Releases** events. (Packages events are harmless but unnecessary now — the hook only acts
+   on the release event's `released` action.)
 2. **GHCR token (only if the package is private).** Create a token with `read:packages`
    (github.com/settings/tokens) and set `GHCR_TOKEN=` in `csharp/.env`. *(Or make the package
    public and leave it empty.)*
@@ -76,6 +86,9 @@ expose `/ci/released` without it. Terminate TLS at your reverse proxy.
 
 - If the GHCR package is private, the receiver runs `docker login ghcr.io` with `GHCR_TOKEN` before
   pulling.
-- A release can fire both a `release` and a `package` delivery; `run-deploy.sh` takes a `flock` so
-  the two don't race. Pulling `:latest` when nothing changed is a no-op and won't recreate the
-  container.
+- `run-deploy.sh` takes a `flock` for the whole wait+recreate, so a second release (or a redelivery)
+  arriving while a deploy is polling is skipped rather than racing it.
+- The recreate runs from `COMPOSE_DIR` with both `docker-compose.yml` and
+  `docker-compose.override.yml`, mirroring a hand-run `docker compose up` — the override carries this
+  host's wiring (edge network, no public port, forwarded headers), so it must not be dropped.
+- Tunables: `DEPLOY_WAIT_TIMEOUT` (default 2400s) and `DEPLOY_WAIT_INTERVAL` (default 20s).
