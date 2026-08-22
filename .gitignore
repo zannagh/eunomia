@@ -521,3 +521,6 @@ dotnet-install.sh
 csharp/pgdata/
 csharp/dpkeys/
 
+# Host-specific compose overrides (edge network wiring, ports, local paths).
+docker-compose.override.yml
+**/docker-compose.override.yml
