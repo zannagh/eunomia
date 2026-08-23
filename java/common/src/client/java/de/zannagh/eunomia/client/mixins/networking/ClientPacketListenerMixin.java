@@ -39,8 +39,18 @@ public abstract class ClientPacketListenerMixin extends ClientCommonPacketListen
         CommunicationManager.dispatchClientbound(channelKey, eunomiaPayload.data(), context);
     }
 
+    /**
+     * Fire the client-join event once login finishes, after wiping every scrap of the previous connection's
+     * networking state.
+     *
+     * <p>The wipe has to happen here, ahead of the listener chain, rather than inside the capability probe:
+     * the probe is itself just another join listener, so a listener registered before it would have its
+     * gated join-time send parked and then thrown away by the probe's reset. See
+     * {@code CommunicationManager.beginClientConnection()} for the full account.</p>
+     */
     @Inject(method = "handleLogin", at = @At("TAIL"))
     private void eunomia$onHandleLogin(CallbackInfo ci) {
+        CommunicationManager.beginClientConnection();
         ClientConnectionEvents.onClientJoin((ClientPacketListener) (Object) this, minecraft);
     }
 

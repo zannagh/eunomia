@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -42,6 +43,19 @@ import java.util.function.Consumer;
  */
 public final class ExternalServerClient {
 
+    /**
+     * How many consecutive reconnect attempts a relay gets before this client gives up for the session.
+     *
+     * <p>The loop used to be unbounded, which was survivable only as long as something always called
+     * {@link #stop()}. Nothing reliably did: below 1.20.5 there was no client-disconnect hook at all, so the
+     * relay client for the server a player had already left kept dialling - at the backoff cap, roughly every
+     * 30s - for as long as the game ran, and a session that hopped a few servers accumulated one such loop per
+     * server. The disconnect hook is the real fix; this is the belt to its braces, and it also gives a relay
+     * that is simply down for good a defined end instead of an eternal retry. At the capped backoff the budget
+     * spans on the order of ten minutes, comfortably past a restart and well short of forever.</p>
+     */
+    private static final int MAX_RECONNECT_ATTEMPTS = 20;
+
     private final String base;
     private final String scope;
     private final String name;
@@ -57,6 +71,8 @@ public final class ExternalServerClient {
     private volatile boolean terminated;
     private volatile WebSocket webSocket;
     private final RelayBackoff backoff = new RelayBackoff();
+    /** Consecutive reconnect attempts since the last successful open; the budget {@link #MAX_RECONNECT_ATTEMPTS} caps. */
+    private final AtomicInteger reconnectAttempts = new AtomicInteger();
     /** Whether the receive socket has ever opened; distinguishes "never came up" from "dropped, reconnecting". */
     private volatile boolean everConnected;
     /**
@@ -98,6 +114,7 @@ public final class ExternalServerClient {
     public void start() {
         running = true;
         backoff.reset();
+        reconnectAttempts.set(0);
         connect();
     }
 
@@ -173,6 +190,7 @@ public final class ExternalServerClient {
     void handleConnected(WebSocket socket) {
         webSocket = socket;
         backoff.reset();
+        reconnectAttempts.set(0);
         everConnected = true;
         logger.info("Connected to external relay {} (scope {})", base, scope);
         notifyState(RelayConnectionState.OPEN);
@@ -286,7 +304,26 @@ public final class ExternalServerClient {
         if (!running) {
             return;
         }
+        if (reconnectAttempts.incrementAndGet() > MAX_RECONNECT_ATTEMPTS) {
+            handleReconnectBudgetExhausted();
+            return;
+        }
         CompletableFuture.delayedExecutor(backoff.nextDelayMs(), TimeUnit.MILLISECONDS).execute(this::connect);
+    }
+
+    /**
+     * Terminal give-up after {@link #MAX_RECONNECT_ATTEMPTS} consecutive failures, idempotent. Routed through
+     * the same {@link #terminate()} path as a block so the caller restores the Minecraft transport and, above
+     * all, concludes the send gate - a client that just stopped retrying in silence would leave every gated
+     * send parked for the rest of the connection.
+     */
+    private void handleReconnectBudgetExhausted() {
+        if (terminated) {
+            return;
+        }
+        logger.warn("Relay {} did not come back after {} reconnect attempts; giving up for this session and "
+                + "falling back to the Minecraft transport.", base, MAX_RECONNECT_ATTEMPTS);
+        terminate();
     }
 
     /** Decodes and dispatches one relay frame. Never throws - called straight from a WebSocket callback. */

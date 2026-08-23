@@ -71,6 +71,9 @@ dependencies {
     testImplementation("com.google.code.gson:gson:2.11.0")
     testImplementation("org.slf4j:slf4j-api:2.0.16")
     testImplementation("org.jspecify:jspecify:1.0.0")
+    // Matches the assertion style the :common test convention plugin already sets up, so tests can move
+    // between the two modules (as EunomiaServerConfig's did) without being rewritten.
+    testImplementation("org.assertj:assertj-core:3.26.3")
 }
 
 java {

@@ -6,6 +6,7 @@ import de.zannagh.eunomia.networking.handshake.ClientHelloPayload;
 import de.zannagh.eunomia.networking.handshake.HandshakePackets;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
 import de.zannagh.eunomia.networking.handshake.ServerHelloPayload;
+import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import de.zannagh.eunomia.networking.packets.ClientContext;
 import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.packets.ServerContext;
@@ -18,7 +19,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * The single hub for defining, sending, receiving and routing packets - on both the client and the
@@ -63,6 +66,20 @@ public final class CommunicationManager {
     private static volatile ClientTransport clientTransport;
 
     private static final ServerCapabilities SERVER_CAPABILITIES = new ServerCapabilities();
+
+    static {
+        // Eagerly, and first: the send gate's resolution listener must never end up behind a consumer's (or
+        // eunomia's own) listener, because whether parked join-time packets are released is not something that
+        // may depend on client-initializer ordering. Installing it from here also makes it listener zero.
+        ClientSendGate.install(SERVER_CAPABILITIES);
+    }
+
+    /**
+     * What this server advertises about the external transport. A supplier rather than a value because the
+     * backing configuration lives outside this Minecraft-free module (and may be reloaded): the loader binds it
+     * once at startup, and every HELLO answer reads it afresh.
+     */
+    private static volatile Supplier<ServerSyncPolicy> serverSyncPolicySource = () -> ServerSyncPolicy.UNKNOWN;
 
     private CommunicationManager() {
     }
@@ -290,8 +307,29 @@ public final class CommunicationManager {
     }
 
     /**
+     * Server-side: installs the source of the external-transport policy this server advertises in its HELLO
+     * answer. Pass {@code null} to advertise nothing. The supplier is read per probe, so a config reload takes
+     * effect on the next joining client without re-registering the handshake.
+     */
+    public static void setServerSyncPolicySource(Supplier<ServerSyncPolicy> source) {
+        serverSyncPolicySource = source == null ? () -> ServerSyncPolicy.UNKNOWN : source;
+    }
+
+    /** The policy this server would advertise right now. Never {@code null}, never throws. */
+    public static ServerSyncPolicy serverSyncPolicy() {
+        try {
+            ServerSyncPolicy policy = serverSyncPolicySource.get();
+            return policy == null ? ServerSyncPolicy.UNKNOWN : policy;
+        } catch (Exception e) {
+            LOGGER.warn("Server sync policy source threw; advertising no policy", e);
+            return ServerSyncPolicy.UNKNOWN;
+        }
+    }
+
+    /**
      * Server-side: answer capability probes. Registers a HELLO handler that replies with the list of
-     * channels this server actually receives. Call once during server startup.
+     * channels this server actually receives, plus its advertised {@link ServerSyncPolicy}. Call once during
+     * server startup.
      */
     public static void enableServerHandshake() {
         register(HandshakePackets.HELLO);
@@ -299,7 +337,7 @@ public final class CommunicationManager {
         onServerReceive(HandshakePackets.HELLO, (hello, context) ->
                 context.reply(HandshakePackets.HELLO_ACK,
                         new ServerHelloPayload(HandshakePackets.PROTOCOL_VERSION,
-                                new ArrayList<>(serverHandlerChannels()))));
+                                new ArrayList<>(serverHandlerChannels()), serverSyncPolicy())));
     }
 
     /**
@@ -310,14 +348,44 @@ public final class CommunicationManager {
         register(HandshakePackets.HELLO);
         register(HandshakePackets.HELLO_ACK);
         onClientReceive(HandshakePackets.HELLO_ACK, (ack, context) ->
-                SERVER_CAPABILITIES.markPresent(ack.protocolVersion, ack.receiverChannels));
+                SERVER_CAPABILITIES.markPresent(
+                        ack.protocolVersion, ack.receiverChannelsOrEmpty(), ack.syncPolicy()));
     }
 
-    /** Client-side: reset capability state and send the HELLO probe. Call on each join. */
-    public static void beginServerProbe() {
-        // Drop any sends queued against the previous connection, then re-probe. HELLO must bypass the
-        // gate (it is what resolves the capability the gate waits on), so it goes out immediately.
+    /**
+     * Client-side: tear down every scrap of per-connection state, at the very start of a join and
+     * <em>before</em> any join listener runs. Resets the capability view and drops sends still parked from a
+     * previous connection.
+     *
+     * <p><b>Why this is separate from {@link #beginServerProbe()}.</b> The probe used to do the dropping
+     * itself, which made it destructive to the very connection it was opening. Both the probe and every
+     * consumer's join-time {@code sendToServer} are ordinary join listeners, so their relative order is
+     * whatever registration order happened to be - and a listener registered <em>before</em> the probe parks
+     * its packet behind the gate only for the probe's reset, microseconds later, to throw it away. That is
+     * exactly what happened in-tree: {@code EunomiaClient.init()} registers the example handlers (which PING
+     * on join) before it registers the probe, so the PING was queued and then discarded on every single join,
+     * and {@link SendOptions#AFTER_SUCCESSFUL_HANDSHAKE} - the default for {@link #sendToServer} - silently
+     * delivered nothing. Ordering could not fix it either: a consuming mod's client initializer may run
+     * before or after eunomia's, so no registration order is safe.</p>
+     *
+     * <p>Hoisting the reset out of the listener chain and into the connection lifecycle makes it
+     * order-independent by construction: everything parked after this call belongs to this connection and is
+     * never dropped by the handshake. Called from the client play-listener mixins on both the modern and the
+     * pre-1.20.5 path, which is the one funnel every join goes through.</p>
+     */
+    public static void beginClientConnection() {
+        SERVER_CAPABILITIES.reset();
         ClientSendGate.reset();
+    }
+
+    /**
+     * Client-side: reset the capability view and send the HELLO probe. Call on each join.
+     *
+     * <p>Deliberately does <em>not</em> touch the send gate's queue - see {@link #beginClientConnection()}
+     * for why that would eat the join-time sends this probe exists to release. HELLO itself must bypass the
+     * gate (it is what resolves the capability the gate waits on), so it goes out immediately.</p>
+     */
+    public static void beginServerProbe() {
         SERVER_CAPABILITIES.reset();
         sendToServerNow(HandshakePackets.HELLO, new ClientHelloPayload(HandshakePackets.PROTOCOL_VERSION));
     }
@@ -344,6 +412,27 @@ public final class CommunicationManager {
      */
     public static void concludeNoRelay() {
         ClientSendGate.concludeNoRelay();
+    }
+
+    /**
+     * Client-side: tell the send gate the Minecraft transport is this connection's settled destination, so
+     * anything parked behind it flushes over the game connection. Called by the client transport selector when
+     * it has finished deciding - including when a relay it preferred turned out to be unusable while the joined
+     * server does speak Eunomia, which {@link #concludeNoRelay()} would wrongly turn into a drop.
+     */
+    public static void concludeMinecraftTransport() {
+        ClientSendGate.concludeMinecraftTransport();
+    }
+
+    /**
+     * Client-side: install the predicate telling the send gate whether a relay may still outrank an
+     * Eunomia-speaking Minecraft server on this connection (the {@code preferExternalTransport} case). While it
+     * answers true, a "present" resolution parks rather than flushing, so the join-time payload is not put on
+     * the game connection the preference exists to bypass. A query rather than an event, so it is immune to
+     * capability-listener ordering. Pass {@code null} to restore the default ("it may not").
+     */
+    public static void setExternalTransportPreferred(BooleanSupplier preferred) {
+        ClientSendGate.setExternalTransportPreferred(preferred);
     }
 
     /**
@@ -391,10 +480,12 @@ public final class CommunicationManager {
         SERVER_HANDLERS.clear();
         CLIENT_HANDLERS.clear();
         registrationListener = null;
+        serverSyncPolicySource = () -> ServerSyncPolicy.UNKNOWN;
         serverTransport = null;
         clientTransport = null;
         SERVER_CAPABILITIES.reset();
         ClientSendGate.reset();
+        ClientSendGate.setExternalTransportPreferred(null);
         // Last: a hook may re-derive state from the fields cleared above, so let them settle first.
         RESET_HOOKS.forEach(Runnable::run);
     }

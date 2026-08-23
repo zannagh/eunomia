@@ -45,19 +45,55 @@ val checkConventionsInSync by tasks.registering {
     doLast {
         val src = buildSrcKotlin.asFile
         val copy = conventionSources.asFile
-        val drift = src.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.mapNotNull { s ->
-            val rel = s.relativeTo(src).path
+        // Compare EVERY file, not just `*.kt`. The original check filtered on `.kt`, which silently
+        // excluded the `*.gradle.kts` precompiled script plugins - i.e. every convention plugin this
+        // build exists to publish (multiloader-common/-loader/-loom, eunomia-publish). The guard could
+        // therefore never see drift in the very files it was written to protect, and drift did in fact
+        // accumulate unnoticed (the `:core` shading block in multiloader-loader and the whole Tier-1
+        // test-dependency block + mavenCentral() in multiloader-common were missing from the copy).
+        // `syncConventions` always copied the whole tree, so an unfiltered comparison is the correct
+        // mirror of what the Sync task actually does - and it stays correct if a new file type
+        // (.java, .properties, a resource) is ever added to buildSrc.
+        // Compared as bytes so line-ending or encoding drift cannot slip past a text comparison.
+        fun scan(root: java.io.File) = root.walkTopDown()
+            .filter { it.isFile && it.name != ".DS_Store" }
+            .map { it.relativeTo(root).path }
+            .toSortedSet()
+
+        val missingOrChanged = scan(src).filter { rel ->
             val c = copy.resolve(rel)
-            if (!c.exists() || c.readText() != s.readText()) rel else null
-        }.toList()
-        if (drift.isNotEmpty()) {
-            error("gradle-conventions is out of sync with ../buildSrc for: $drift. " +
+            !c.exists() || !c.readBytes().contentEquals(src.resolve(rel).readBytes())
+        }
+        // Sync deletes extraneous files on the copy side, so a file that exists ONLY in the copy is
+        // drift too - and was likewise invisible to the old check.
+        val extraneous = scan(copy).filterNot { src.resolve(it).exists() }
+
+        if (missingOrChanged.isNotEmpty() || extraneous.isNotEmpty()) {
+            val details = buildString {
+                if (missingOrChanged.isNotEmpty()) {
+                    append("\n  differs from / missing in the published copy: ")
+                    append(missingOrChanged.joinToString(", "))
+                }
+                if (extraneous.isNotEmpty()) {
+                    append("\n  present only in the published copy: ")
+                    append(extraneous.joinToString(", "))
+                }
+            }
+            error("gradle-conventions is out of sync with ../buildSrc:$details\n" +
+                    "../buildSrc is the source of truth. " +
                     "Run `./gradlew -p gradle-conventions syncConventions`.")
         }
     }
 }
 
 tasks.named("check") { dependsOn(checkConventionsInSync) }
+
+// ...but nothing in CI runs `-p gradle-conventions check`: the publish-maven workflow invokes
+// `-p gradle-conventions publish` directly, and `publish` has no path to `check`. So the guard was
+// wired only to a task nobody called, which is the second half of how the drift survived. Gate every
+// publish on it as well - shipping a copy that does not match the plugins eunomia itself builds with
+// is exactly the failure this task exists to prevent.
+tasks.withType<AbstractPublishToMaven>().configureEach { dependsOn(checkConventionsInSync) }
 
 publishing {
     repositories {

@@ -57,10 +57,6 @@ game_versions = "26.1,26.1.1,26.1.2"
 java.version = "25"
 display_version = "26.2"
 game_versions = "26.2"
-# To enable the FCGT (fabric-client-gametest-api-v1) networking smoke on a variant, set
-# `fabricapi.semver` here (the fabric-api version for that MC, e.g. "0.153.0+26.2"). Presence of the
-# property flips the `fcgt` stonecutter constant, the FCGT deps, the gametest entrypoint and the
-# `runClientGametest` task on. Left off on this deobf variant - see the smoke README for the caveat.
 
 ["26.3-snapshot-9"]
 java.version = "25"
@@ -77,52 +73,77 @@ game_versions = "26.3-snapshot-9"
 
 # ── Fabric ────────────────────────────────────────────────────────────────────
 
+# `fabricapi.semver` (the fabric-api version for that MC) is the single switch for the FCGT
+# (fabric-client-gametest-api-v1) client gametest: its presence flips the `fcgt` stonecutter
+# constant, the FCGT compile dep, the `fabric-client-gametest` entrypoint list, the run/mods
+# provisioning (`copyFcgtToMods`) and the `runClientGametest` task on. It MUST live in the
+# ["fabric-<mc>"] section, not the bare ["<mc>"] one - :smoke's FcgtSmokeTest discovers enabled
+# variants by scanning for fabric sections that carry the key.
+#
+# Only the Modrinth *hash* flavour (`fabricapi.version`) is deliberately absent: eunomia declares
+# no compat mods and has no compat-jar fetch machinery, so a hash here would be dead config.
+
 ["fabric-1.20.1"]
 "fabric.minecraft_version" = "1.20.1"
 "fabric.minecraft_version_range" = ">=1.20 <=1.20.1"
+# The fabric-api line for this MC predates fabric-client-gametest-api-v1 - the FCGT smoke
+# cannot be wired here. `fabricapi.semver` is intentionally omitted; do not "helpfully" add it.
 
 ["fabric-1.21.1"]
 "fabric.minecraft_version" = "1.21.1"
 "fabric.minecraft_version_range" = ">=1.21 <=1.21.1"
+# The fabric-api line for this MC predates fabric-client-gametest-api-v1 - the FCGT smoke
+# cannot be wired here. `fabricapi.semver` is intentionally omitted; do not "helpfully" add it.
 
 ["fabric-1.21.2"]
 "fabric.minecraft_version" = "1.21.2"
 "fabric.minecraft_version_range" = ">=1.21.2 <=1.21.2"
+# The fabric-api line for this MC predates fabric-client-gametest-api-v1 - the FCGT smoke
+# cannot be wired here. `fabricapi.semver` is intentionally omitted; do not "helpfully" add it.
 
 ["fabric-1.21.3"]
 "fabric.minecraft_version" = "1.21.3"
 "fabric.minecraft_version_range" = ">=1.21.3 <=1.21.3"
+# The fabric-api line for this MC predates fabric-client-gametest-api-v1 - the FCGT smoke
+# cannot be wired here. `fabricapi.semver` is intentionally omitted; do not "helpfully" add it.
 
 ["fabric-1.21.4"]
 "fabric.minecraft_version" = "1.21.4"
 "fabric.minecraft_version_range" = ">=1.21.4 <=1.21.4"
+fabricapi.semver = "0.119.4+1.21.4"
 
 ["fabric-1.21.8"]
 "fabric.minecraft_version" = "1.21.8"
 "fabric.minecraft_version_range" = ">=1.21.5 <=1.21.8"
+fabricapi.semver = "0.136.1+1.21.8"
 
 ["fabric-1.21.10"]
 "fabric.minecraft_version" = "1.21.10"
 "fabric.minecraft_version_range" = ">=1.21.9 <=1.21.10"
+fabricapi.semver = "0.138.4+1.21.10"
 
 ["fabric-1.21.11"]
 "fabric.minecraft_version" = "1.21.11"
 "fabric.minecraft_version_range" = "1.21.11"
+fabricapi.semver = "0.141.4+1.21.11"
 
 ["fabric-26.1.2"]
 "fabric.minecraft_version" = "26.1.2"
 "fabric.minecraft_version_range" = ">=26.1 <=26.1.2"
 loader_version = "0.19.3"
+fabricapi.semver = "0.153.0+26.1.2"
 
 ["fabric-26.2"]
 "fabric.minecraft_version" = "26.2"
 "fabric.minecraft_version_range" = "26.2"
 loader_version = "0.19.3"
+fabricapi.semver = "0.153.0+26.2"
 
 ["fabric-26.3-snapshot-9"]
 "fabric.minecraft_version" = "26.3-alpha.9"
 "fabric.minecraft_version_range" = ">=26.3-alpha.9 <=26.3-alpha.9"
 loader_version = "0.19.3"
+fabricapi.semver = "0.158.0+26.3"
 
 # ── NeoForge ──────────────────────────────────────────────────────────────────
 

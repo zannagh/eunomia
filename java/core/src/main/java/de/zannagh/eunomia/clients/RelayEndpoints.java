@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -23,10 +24,30 @@ final class RelayEndpoints {
     private RelayEndpoints() {
     }
 
-    /** Normalizes a configured address to a scheme-qualified base with no trailing slash. */
+    /**
+     * Normalizes a configured address to a scheme-qualified base with no trailing slash.
+     *
+     * <p>The scheme is recognised <em>case-insensitively</em> and rewritten in lower case. URL schemes are
+     * case-insensitive by specification, so {@code HTTPS://relay.example} is a perfectly ordinary address a
+     * human will paste - but this method used to compare with a case-sensitive {@code startsWith}, decide the
+     * value had no scheme, and hand back {@code http://HTTPS://relay.example}, whose host is the literal
+     * string {@code HTTPS}. Worse, {@link RelayAddresses#isValid(String)} lower-cased before <em>its</em>
+     * scheme check, so that string passed validation, was stored, was answered with APPLIED and was
+     * advertised to every joining client. Folding the scheme to lower case here fixes both halves at once and
+     * additionally keeps {@link #ws(String, String)} working, since its {@code ^http -> ws} rewrite is itself
+     * case-sensitive.
+     *
+     * @param address the configured address; leading and trailing whitespace is ignored.
+     * @return the scheme-qualified base with a lower-case scheme and no trailing slash.
+     */
     static String base(String address) {
         String value = address.trim();
-        if (!value.startsWith("http://") && !value.startsWith("https://")) {
+        String lower = value.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("https://")) {
+            value = "https://" + value.substring("https://".length());
+        } else if (lower.startsWith("http://")) {
+            value = "http://" + value.substring("http://".length());
+        } else {
             value = "http://" + value;
         }
         while (value.endsWith("/")) {

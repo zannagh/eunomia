@@ -2,13 +2,10 @@
   "required": true,
   "package": "de.zannagh.eunomia.mixins",
   "compatibilityLevel": "JAVA_17",
+  "plugin": "de.zannagh.eunomia.EunomiaMixinPlugin",
   "mixins": [
-    "networking.ClientboundCustomPayloadPacketMixin",
-    "networking.ServerboundCustomPayloadPacketMixin",
-    "networking.ServerGamePacketListenerMixin",
     "networking.ServerLoginMixin",
     "networking.ServerPlayNetworkHandlerMixin",
-    "networking.MinecraftServerMixin",
-    "PackRepositoryMixin"
+    "networking.MinecraftServerMixin"
   ]
 }

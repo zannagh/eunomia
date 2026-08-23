@@ -1,3 +1,4 @@
+//? if >= 1.20.5 {
 package de.zannagh.eunomia.networking.payloads;
 
 import org.junit.jupiter.api.Test;
@@ -140,3 +141,4 @@ class EunomiaPayloadListTest {
         assertThat(list.contains(null)).isTrue();
     }
 }
+//?}

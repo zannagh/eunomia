@@ -18,7 +18,7 @@ cd java
 ./gradlew build                # all loaders + Paper
 ./gradlew test                 # all unit tests (core + paper + the active common variant)
 ./gradlew aggregatedCoverage   # unit tests + one merged JaCoCo report (build/reports/jacoco/aggregate)
-./gradlew smokeTest            # Tier-3 FCGT client smoke (skips unless a variant enables fabricapi.semver)
+./gradlew smokeTest            # Tier-3 FCGT client smoke: boots a real MC client per enabled Fabric variant
 ./gradlew stageArtifacts       # build every loader variant into staging/ + a versions.json
 ```
 

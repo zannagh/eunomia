@@ -11,13 +11,16 @@ class EunomiaConfigTest {
     private static final Gson GSON = new Gson();
 
     @Test
-    void defaultConstructorOptsFallbackOutAndLeavesAddressBlank() {
+    void defaultConstructorLeavesEveryKnobInheriting() {
         EunomiaConfig config = new EunomiaConfig();
 
-        assertThat(config.enableExternalFallback).isFalse();
+        // null everywhere: the player made no decision, so the resolver falls through to the rungs below.
+        assertThat(config.enableExternalFallback).isNull();
+        assertThat(config.enableExternalFallbackOverride()).isNull();
+        assertThat(config.externalServerAddress).isNull();
+        assertThat(config.externalServerAddressOverride()).isNull();
+        assertThat(config.preferExternalTransportOverride()).isNull();
         assertThat(config.externalFallbackEnabled()).isFalse();
-        assertThat(config.externalServerAddress).isEmpty();
-        assertThat(config.externalServerAddress()).isEmpty();
         assertThat(config.hasExternalServerAddress()).isFalse();
     }
 
@@ -27,6 +30,7 @@ class EunomiaConfigTest {
 
         assertThat(config.enableExternalFallback).isTrue();
         assertThat(config.externalFallbackEnabled()).isTrue();
+        assertThat(config.enableExternalFallbackOverride()).isTrue();
         assertThat(config.externalServerAddress()).isEqualTo("relay.example:25566");
         assertThat(config.hasExternalServerAddress()).isTrue();
     }
@@ -97,8 +101,10 @@ class EunomiaConfigTest {
         EunomiaConfig defaults = config.getDefaultValue();
 
         assertThat(defaults).isNotSameAs(config);
-        assertThat(defaults.enableExternalFallback).isFalse();
-        assertThat(defaults.externalServerAddress()).isEmpty();
+        assertThat(defaults.enableExternalFallback).isNull();
+        assertThat(defaults.externalServerAddress()).isNull();
+        // A default is stamped with the current schema, so loading it never triggers a pointless migration.
+        assertThat(defaults.shouldMigrate()).isFalse();
     }
 
     @Test
@@ -123,32 +129,39 @@ class EunomiaConfigTest {
     }
 
     @Test
-    void schemaVersionsAreOneZeroZeroAndEqual() {
+    void unstampedDocumentReportsTheLegacySchemaAndCurrentIsOneOneZero() {
         EunomiaConfig config = new EunomiaConfig();
 
-        SemanticVersion expected = new SemanticVersion(1, 0, 0, null);
-        assertThat(config.getSchemaVersion()).isEqualTo(expected);
-        assertThat(config.getCurrentSchemaVersion()).isEqualTo(expected);
+        // No persisted marker == a pre-override (1.0.0) document; that is exactly how migration is detected.
+        assertThat(config.getSchemaVersion()).isEqualTo(new SemanticVersion(1, 0, 0, null));
+        assertThat(config.getCurrentSchemaVersion()).isEqualTo(new SemanticVersion(1, 1, 0, null));
+    }
+
+    @Test
+    void stampedDocumentReportsTheCurrentSchema() {
+        EunomiaConfig config = EunomiaConfig.withCurrentSchema();
+
         assertThat(config.getSchemaVersion()).isEqualTo(config.getCurrentSchemaVersion());
     }
 
     @Test
-    void shouldMigrateIsFalseBecauseSchemaMatchesCurrent() {
-        EunomiaConfig config = new EunomiaConfig();
-
-        assertThat(config.shouldMigrate()).isFalse();
+    void shouldMigrateIsTrueForAnUnstampedDocumentAndFalseOnceStamped() {
+        assertThat(new EunomiaConfig().shouldMigrate()).isTrue();
+        assertThat(EunomiaConfig.withCurrentSchema().shouldMigrate()).isFalse();
     }
 
     @Test
-    void migrateFromReturnsSuppliedInstanceUnchanged() {
+    void migrateFromCarriesLegacyValuesOntoTheOverrideShape() {
         EunomiaConfig config = new EunomiaConfig();
         EunomiaConfig old = new EunomiaConfig(true, "legacy");
 
         EunomiaConfig migrated = config.migrateFrom(old);
 
-        assertThat(migrated).isSameAs(old);
-        assertThat(migrated.enableExternalFallback).isTrue();
-        assertThat(migrated.externalServerAddress()).isEqualTo("legacy");
+        assertThat(migrated).isNotSameAs(old);
+        assertThat(migrated.enableExternalFallbackOverride()).isTrue();
+        assertThat(migrated.externalServerAddressOverride()).isEqualTo("legacy");
+        assertThat(migrated.preferExternalTransportOverride()).isNull();
+        assertThat(migrated.getSchemaVersion()).isEqualTo(migrated.getCurrentSchemaVersion());
     }
 
     @Test
@@ -198,11 +211,11 @@ class EunomiaConfigTest {
     }
 
     @Test
-    void gsonDeserializesEmptyObjectToDefaults() {
+    void gsonDeserializesEmptyObjectToAllInherit() {
         EunomiaConfig restored = GSON.fromJson("{}", EunomiaConfig.class);
 
-        assertThat(restored.enableExternalFallback).isFalse();
-        assertThat(restored.externalServerAddress()).isEmpty();
+        assertThat(restored.enableExternalFallback).isNull();
+        assertThat(restored.externalServerAddress()).isNull();
         assertThat(restored.hasExternalServerAddress()).isFalse();
         assertThat(restored.hasChangedFromSerializedContent()).isFalse();
     }
@@ -212,8 +225,8 @@ class EunomiaConfigTest {
         EunomiaConfig restored = GSON.fromJson("{\"enableExternalFallback\":true}", EunomiaConfig.class);
 
         assertThat(restored.enableExternalFallback).isTrue();
-        // externalServerAddress absent from JSON -> Gson leaves the field-initializer default ("").
-        assertThat(restored.externalServerAddress()).isEmpty();
+        // externalServerAddress absent from JSON -> still inheriting.
+        assertThat(restored.externalServerAddress()).isNull();
         assertThat(restored.hasExternalServerAddress()).isFalse();
     }
 }

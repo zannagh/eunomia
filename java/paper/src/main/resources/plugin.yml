@@ -6,3 +6,12 @@ authors:
   - zannagh
 # Compiled against the 1.20 API and touching no NMS, so the single jar loads on 1.20.1 through 26.x.
 api-version: "1.20"
+# Soft dependency: Eunomia works fine without LuckPerms (op / superperms cover the admin check), but
+# when it IS installed it must load first so its API is on the classpath before our join listener runs.
+softdepend:
+  - LuckPerms
+
+permissions:
+  eunomia.admin:
+    description: Allows changing Eunomia's server-wide settings from the in-game menu.
+    default: op

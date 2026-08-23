@@ -105,16 +105,44 @@ class ClientSendGateTest {
     }
 
     @Test
-    void beginServerProbeDropsSendsQueuedForThePriorConnection() {
+    void beginClientConnectionDropsSendsQueuedForThePriorConnection() {
         CommunicationManager.setClientTransport(transport);
         CommunicationManager.sendToServer(GATED, new Payload("stale"));
 
-        // Reconnect: the new probe clears the previous connection's queue (and sends HELLO).
+        // Reconnect: the join lifecycle hook - not the probe - clears the previous connection's queue.
+        CommunicationManager.beginClientConnection();
         CommunicationManager.beginServerProbe();
         // Resolving the NEW connection as present must not flush the stale packet.
         caps().markPresent(1, List.of(GATED.channelKey()));
         assertEquals(List.of(HandshakePackets.HELLO.channelKey()), transport.sent,
                 "only the fresh probe's HELLO should be on the wire; the stale queued send is gone");
+    }
+
+    /**
+     * Regression: the join sequence must not eat the packets it exists to release.
+     *
+     * <p>Every join-time {@code sendToServer} and the capability probe itself are ordinary join listeners, so
+     * their order is whatever registration order happened to be. When {@code beginServerProbe()} did the
+     * per-connection queue reset, a listener that ran <em>before</em> the probe had its packet parked and then
+     * immediately discarded - which is precisely what happened in-tree (the example PING is registered before
+     * the probe), making {@link SendOptions#AFTER_SUCCESSFUL_HANDSHAKE}, the default policy, deliver nothing
+     * on every single join. This asserts the surviving order-independence: park first, probe second, and the
+     * parked packet still flushes on the present resolution.</p>
+     */
+    @Test
+    void aSendParkedBeforeTheProbeSurvivesTheProbeAndFlushesOnResolution() {
+        CommunicationManager.beginClientConnection();
+
+        // A join listener registered ahead of the probe parks its packet...
+        CommunicationManager.sendToServer(GATED, new Payload("join-time"));
+        // ...and only then does the probe listener run.
+        CommunicationManager.beginServerProbe();
+        assertEquals(List.of(HandshakePackets.HELLO.channelKey()), transport.sent,
+                "the probe must send HELLO and must not have dropped the parked send");
+
+        caps().markPresent(1, List.of(GATED.channelKey()));
+        assertEquals(List.of(HandshakePackets.HELLO.channelKey(), GATED.channelKey()), transport.sent,
+                "the join-time send must reach the wire once the handshake resolves present");
     }
 
     @Test

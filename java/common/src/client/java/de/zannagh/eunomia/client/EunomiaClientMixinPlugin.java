@@ -27,9 +27,17 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        // The networking client mixins and the generic screen-transformation hook must apply. Other
-        // dynamically-listed mixins keep whatever gate they had (DevSkin stays off until it is wired up).
-        return mixinClassName.contains(".networking.") || mixinClassName.contains(".ui.");
+        // The networking client mixins, the generic screen-transformation hook, and the dev-tooling
+        // hooks must apply. Other dynamically-listed mixins keep whatever gate they had (DevSkin stays
+        // off until it is wired up).
+        //
+        // NOTE the shape of this gate: it is a package-substring allowlist, so a mixin sitting directly
+        // in the bare `mixins` package would be listed by getMixins() below and then silently dropped
+        // here. Anything added must live in - and be matched by - one of these subpackages. That is why
+        // the window-focus hooks live in `mixins.devtools` and why `.devtools.` is listed here.
+        return mixinClassName.contains(".networking.")
+                || mixinClassName.contains(".ui.")
+                || mixinClassName.contains(".devtools.");
     }
 
     @Override
@@ -42,6 +50,23 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
         mixins.add("DevSkinMixin");
         // The game-version-agnostic screen-transformation hook (registry in client.ui).
         mixins.add("ui.ScreenMixin");
+        // Its init-time counterpart: the hook that lets a registered ScreenInitializer add a real,
+        // persistent, narratable widget to a vanilla screen (registry in client.ui). Separate from
+        // ScreenMixin because it targets Screen#init / Screen#rebuildWidgets, not the render entrypoint.
+        mixins.add("ui.ScreenInitMixin");
+        // Dev tooling: stop the fabric-client-gametest window from stealing macOS focus. Two eras,
+        // two classes, each gated exactly like the file it names - 26.1.2/26.2 hook the extracted
+        // static Window#createGlfwWindow, everything at or below 1.21.11 hooks the Window constructor
+        // that still calls glfwCreateWindow inline. 26.3+ moved to SDL and is handled by the
+        // SDL_WINDOW_ACTIVATE_* env vars on the clientGametest run config, so neither is added there.
+        // Registered here rather than statically in eunomia.client.mixins.json precisely because the
+        // classes compile to empty stubs outside their gate, which `checkMixinConfigs` rejects.
+        //? if >= 26.1-0.snapshot.10 && < 26.3-0.snapshot.2 {
+        mixins.add("devtools.WindowFocusMixin");
+        //?}
+        //? if < 26.1-0.snapshot.10 {
+        /*mixins.add("devtools.LegacyWindowFocusMixin");
+        *///?}
         //? if >= 1.20.5 {
         mixins.add("networking.ClientPacketListenerMixin");
         //?}

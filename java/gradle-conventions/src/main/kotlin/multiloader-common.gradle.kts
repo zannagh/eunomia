@@ -11,6 +11,8 @@ repositories {
     maven("https://api.modrinth.com/maven") {
         content { includeGroup("maven.modrinth") }
     }
+    // Tier-1 unit-test libraries (JUnit / Mockito / AssertJ) live on Maven Central.
+    mavenCentral()
 }
 
 dependencies {
@@ -19,6 +21,20 @@ dependencies {
     // of common and BOTH loader flavours (loom-based fabric and moddev-based neoforge both apply
     // this plugin), which srcDir common's sources and compile against it directly.
     "implementation"(project(":core"))
+
+    // Tier-1 (plain-JVM) unit-test stack for :common. Mirrors :core's JUnit 6 BOM and adds Mockito +
+    // AssertJ for the game-agnostic classes (configuration, compatibility, event handlers, utils).
+    // Only the ACTIVE stonecutter variant actually runs `test` (see below), so these never load on
+    // the inactive branches. MC-coupled packages (server/mixins/networking-loader) stay untested here
+    // - they only execute in a live client/server (Tier 2/3).
+    "testImplementation"(platform("org.junit:junit-bom:6.0.1"))
+    "testImplementation"("org.junit.jupiter:junit-jupiter")
+    "testRuntimeOnly"("org.junit.platform:junit-platform-launcher")
+    // Mockito 5.23+ (Byte Buddy 1.18) is required: the 26.x variants target Java 25, which older
+    // Byte Buddy cannot instrument ("Could not modify all classes").
+    "testImplementation"("org.mockito:mockito-core:5.23.0")
+    "testImplementation"("org.mockito:mockito-junit-jupiter:5.23.0")
+    "testImplementation"("org.assertj:assertj-core:3.26.3")
 }
 
 val sc = project.stonecutterBuild
