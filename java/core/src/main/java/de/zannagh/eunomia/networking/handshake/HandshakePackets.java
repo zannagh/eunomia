@@ -8,8 +8,14 @@ public final class HandshakePackets {
     private HandshakePackets() {
     }
 
-    /** Bumped when the handshake payload shape changes; carried both ways for forward diagnostics. */
-    public static final int PROTOCOL_VERSION = 1;
+    /**
+     * Bumped when the handshake payload shape changes; carried both ways for forward diagnostics.
+     * <p>
+     * 1 - protocol version plus the server's receiver-channel list.<br>
+     * 2 - adds the server-advertised external-transport policy ({@link ServerSyncPolicy}) to the ACK. A v2
+     * client decodes a v1 ACK cleanly: the policy fields are simply absent and read as "no opinion".
+     */
+    public static final int PROTOCOL_VERSION = 2;
 
     /** Client → server: "do you speak Eunomia?". */
     public static final PacketType<ClientHelloPayload> HELLO =

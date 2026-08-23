@@ -24,3 +24,6 @@ The shared build logic (the `multiloader-*` stonecutter convention plugins) is r
 so a consuming mod can reuse the multiloader setup instead of copying `buildSrc`.
 
 See [`docs/networking.md`](docs/networking.md) for the networking framework guide.
+See [`docs/toasts.md`](docs/toasts.md) for the client toast API guide.
+See [`docs/configuration.md`](docs/configuration.md) for the fluent configuration API and the sync
+settings precedence chain.

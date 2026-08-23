@@ -1,9 +1,13 @@
 package de.zannagh.eunomia;
 
 import com.google.gson.Gson;
+import de.zannagh.eunomia.admin.ServerSettingsServerHandlers;
 import de.zannagh.eunomia.common.PackRepositoryProvider;
 import de.zannagh.eunomia.configuration.ConfigurationProvider;
 import de.zannagh.eunomia.configuration.EunomiaConfig;
+import de.zannagh.eunomia.configuration.EunomiaConfiguration;
+import de.zannagh.eunomia.configuration.EunomiaServerConfig;
+import de.zannagh.eunomia.configuration.EunomiaSyncSettings;
 import de.zannagh.eunomia.configuration.FileConfigurationProvider;
 import de.zannagh.eunomia.examples.ExampleServerHandlers;
 import de.zannagh.eunomia.keyed.ReplicatedStores;
@@ -13,6 +17,7 @@ import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
 import de.zannagh.eunomia.serialization.SerializationManager;
 import de.zannagh.eunomia.server.ServerConnectionEventConsumer;
 import de.zannagh.eunomia.server.ServerConnectionEvents;
+import de.zannagh.eunomia.utils.ServerUtil;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.slf4j.Logger;
@@ -51,18 +56,110 @@ public final class Eunomia {
      */
     public static ConfigurationProvider<EunomiaConfig> CONFIG_PROVIDER;
 
+    /**
+     * The server-side counterpart of {@link #CONFIG_PROVIDER}, backed by {@code config/eunomia-server.json}.
+     * Holds the operator's external-transport policy, which is advertised to every joining client through the
+     * capability handshake.
+     */
+    public static ConfigurationProvider<EunomiaServerConfig> SERVER_CONFIG_PROVIDER;
+
+    /** The directory both config files live in. Relative to the game directory, as every loader expects. */
+    private static final Path DEFAULT_CONFIG_DIRECTORY = Path.of("config");
+
     private Eunomia() {
-        Gson localGson = SerializationManager.SERIALIZER != null ? SerializationManager.SERIALIZER : new Gson();
-        CONFIG_PROVIDER = new FileConfigurationProvider<>(
-                Path.of("config", "eunomia-client.json"),
-                EunomiaConfig.class, EunomiaConfig::new, localGson, Eunomia.LOGGER);
     }
 
+    /**
+     * Builds both configuration providers (loading, migrating and writing their files as needed) and wires the
+     * settings resolver to them.
+     *
+     * <p>Idempotent on purpose: {@link #init()} runs once per loader entry point, and on a combined client the
+     * client and server initializers can both reach it. Re-running would otherwise throw away in-memory edits by
+     * re-reading from disk. Split out from {@code init()} so it can run - and be tested - without any of the
+     * Minecraft-side wiring.</p>
+     *
+     * @param configDirectory the directory holding {@code eunomia-client.json} / {@code eunomia-server.json}
+     */
+    public static synchronized void initConfiguration(Path configDirectory) {
+        if (CONFIG_PROVIDER != null && SERVER_CONFIG_PROVIDER != null) {
+            return;
+        }
+        // SerializationManager.init() may not have run yet (a consumer may bootstrap config first); a plain Gson
+        // round-trips both config records fine, they are flat POJOs with no custom adapters.
+        Gson localGson = SerializationManager.SERIALIZER != null ? SerializationManager.SERIALIZER : new Gson();
+        if (CONFIG_PROVIDER == null) {
+            CONFIG_PROVIDER = new FileConfigurationProvider<>(
+                    configDirectory.resolve("eunomia-client.json"),
+                    EunomiaConfig.class, EunomiaConfig::withCurrentSchema, localGson, Eunomia.LOGGER);
+        }
+        if (SERVER_CONFIG_PROVIDER == null) {
+            SERVER_CONFIG_PROVIDER = new FileConfigurationProvider<>(
+                    configDirectory.resolve("eunomia-server.json"),
+                    EunomiaServerConfig.class, EunomiaServerConfig::new, localGson, Eunomia.LOGGER);
+        }
+        // Rung one of the precedence chain, and what this server advertises as rung two to its clients.
+        EunomiaSyncSettings.bindClientConfigSource(Eunomia::getConfig);
+        CommunicationManager.setServerSyncPolicySource(() -> getServerConfig().toSyncPolicy());
+    }
+
+    /** Bootstraps the configuration in the default {@code config/} directory. */
+    public static void initConfiguration() {
+        initConfiguration(DEFAULT_CONFIG_DIRECTORY);
+    }
+
+    /** Drops both providers so the next {@link #initConfiguration(Path)} rebuilds them. Tests only. */
+    public static synchronized void resetConfigurationForTesting() {
+        CONFIG_PROVIDER = null;
+        SERVER_CONFIG_PROVIDER = null;
+        EunomiaSyncSettings.resetForTesting();
+    }
+
+    /**
+     * The client-side configuration - the player's <em>overrides</em>, not the effective settings. Read
+     * {@code EunomiaSyncSettings} for the values that actually govern the transport.
+     */
     public static EunomiaConfig getConfig() {
+        initConfiguration();
         return CONFIG_PROVIDER.getValue();
     }
 
+    /** The server-side configuration, i.e. the operator's external-transport policy. */
+    public static EunomiaServerConfig getServerConfig() {
+        initConfiguration();
+        return SERVER_CONFIG_PROVIDER.getValue();
+    }
+
+    /**
+     * Opens a fluent, side-agnostic configuration chain for a consuming mod. Chain the settings you care
+     * about and finish with {@code apply()}; nothing is written before that:
+     *
+     * <pre>{@code
+     * Eunomia.configure()
+     *         .externalFallback(true)
+     *         .externalServerAddress("https://sync.mymod.example")
+     *         .toasts(false)
+     *         .apply();
+     * }</pre>
+     *
+     * <p>Order-independent with respect to {@link #init()}: call it before or after, from your mod
+     * initializer either way. Every value lands in a holder that is read at the point of use rather than
+     * snapshotted during init.</p>
+     *
+     * <p>Client-only settings that need a {@code net.minecraft.client} type - moving eunomia's settings
+     * button to your own screen, or relabelling it - are on {@code EunomiaClient.configure()} instead.
+     * This class is loaded on dedicated servers and therefore names no client type anywhere.</p>
+     *
+     * @return a fresh, single-use configuration builder.
+     */
+    public static EunomiaConfiguration configure() {
+        return new EunomiaConfiguration();
+    }
+
     public static void init() {
+        initConfiguration();
+        // Permission compat, once, here. Detection is the class-load-free resource probe, so registering it
+        // this early is safe; ServerUtil used to self-bootstrap it on the first permission query instead.
+        ServerUtil.initPermissionCompat();
         SerializationManager.init();
         SERIALIZER = SerializationManager.SERIALIZER;
 
@@ -79,6 +176,10 @@ public final class Eunomia {
         // example server handlers so a fresh install already answers the eunomia:* example packets.
         LoaderNetwork.init();
         ExampleServerHandlers.register();
+        // The administrative Cloud Sync settings channel. Registered before the handshake is enabled so its
+        // clientbound answer channel is among the receiver channels the very first probe is told about, and
+        // so an admin that joins immediately already has a server willing to answer.
+        ServerSettingsServerHandlers.register();
         // Answer client capability probes so clients can detect this server runs Eunomia.
         CommunicationManager.enableServerHandshake();
         // On join, dump every registered replicated store to the newcomer. A no-op until a mod (or the example

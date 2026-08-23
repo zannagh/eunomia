@@ -1,5 +1,5 @@
 //? if fcgt {
-/*package de.zannagh.eunomia.smoke;
+package de.zannagh.eunomia.smoke;
 
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.client.examples.ExampleClientHandlers;
@@ -58,4 +58,4 @@ public final class NetworkingSmokeTest implements FabricClientGameTest {
         }
     }
 }
-*///?}
+//?}

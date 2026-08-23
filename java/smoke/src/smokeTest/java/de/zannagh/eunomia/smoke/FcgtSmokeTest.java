@@ -86,7 +86,9 @@ class FcgtSmokeTest {
                 continue;
             }
             if (currentSection != null && line.startsWith("fabricapi.semver")) {
-                enabled.add(currentSection.substring("fabric-".length()));
+                // Stonecutter names the subproject after the full section id, so the gradle path is
+                // `:fabric:fabric-1.21.8` - NOT `:fabric:1.21.8`. Keep the prefix.
+                enabled.add(currentSection);
             }
         }
         return enabled;

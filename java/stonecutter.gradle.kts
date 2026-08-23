@@ -33,6 +33,14 @@ stonecutter parameters {
     replacements.string(current.parsed <= "1.21.1") { replace("WingsLayer", "ElytraLayer") }
     replacements.string(current.parsed < "1.21") { replace("net.minecraft.client.gui.screens.options.SkinCustomizationScreen", "net.minecraft.client.gui.screens.SkinCustomizationScreen")}
     replacements.string(current.parsed < "1.21") { replace("net.minecraft.client.gui.screens.options.OptionsScreen", "net.minecraft.client.gui.screens.OptionsScreen")}
+    // 1.21 moved the options screens into the `options` subpackage. OnlineOptionsScreen (eunomia's
+    // default host for its settings button) exists on every supported version, 1.20.1 included - only
+    // its package moved - so the class is written in the modern form and rewritten downwards. The
+    // simple name is identical on both sides, which is why rewriting the import alone is enough here
+    // (unlike GuiGraphicsExtractor, whose simple name differs). Note this search string is NOT matched
+    // by the OptionsScreen rule above: "options.OptionsScreen" does not occur inside
+    // "options.OnlineOptionsScreen".
+    replacements.string(current.parsed < "1.21") { replace("net.minecraft.client.gui.screens.options.OnlineOptionsScreen", "net.minecraft.client.gui.screens.OnlineOptionsScreen")}
     // 26.3-snapshot-3 extracted the render pipeline API out of blaze3d into the new
     // com.mojang.renderpearl module (same types/methods, new package) and changed
     // BakedQuad.MaterialInfo's boolean shade() accessor to Direction shadeDirectionOverride()
@@ -41,6 +49,18 @@ stonecutter parameters {
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("com.mojang.blaze3d.pipeline.DepthStencilState", "com.mojang.renderpearl.api.pipeline.DepthStencilState") }
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("com.mojang.blaze3d.pipeline.ColorTargetState", "com.mojang.renderpearl.api.pipeline.ColorTargetState") }
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("info.shade()", "info.shadeDirectionOverride()") }
+
+    // Toasts. 1.21.2 renamed ToastComponent to ToastManager and, with it, the Minecraft accessor
+    // getToasts() -> getToastManager(). Source is written in the modern form and rewritten downwards.
+    // (The later 26.2-snapshot-3 move of the accessor off Minecraft and onto Gui is NOT a rename - the
+    // receiver changes too - so that one is an in-source conditional in ToastDispatcher instead.)
+    replacements.string(current.parsed < "1.21.2") { replace(".getToastManager()", ".getToasts()") }
+    // 1.21 turned SystemToast's closed `SystemToastIds` enum into the open `SystemToastId` class that
+    // mods can instantiate. Source is written against the modern name; on 1.20.1 only the name is
+    // rewritten here, while the enum-vs-constructor difference is an in-source conditional. Note the
+    // rule intentionally matches the nested reference rather than a fully-qualified import, because
+    // "SystemToastIds" contains "SystemToastId" - the source must never spell the legacy name itself.
+    replacements.string(current.parsed < "1.21") { replace("SystemToast.SystemToastId", "SystemToast.SystemToastIds") }
 
 }
 

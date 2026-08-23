@@ -7,9 +7,12 @@ import de.zannagh.eunomia.networking.examples.ExampleHandlers;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
 import de.zannagh.eunomia.networking.examples.ExampleReplication;
 import de.zannagh.eunomia.networking.serialization.NetworkSerializer;
+import de.zannagh.eunomia.paper.admin.PaperServerSettings;
 import de.zannagh.eunomia.paper.net.ChannelSubscriber;
 import de.zannagh.eunomia.paper.net.PaperMessageListener;
+import de.zannagh.eunomia.paper.config.PaperServerConfig;
 import de.zannagh.eunomia.paper.net.PaperServerTransport;
+import de.zannagh.eunomia.paper.perm.PermissionResolver;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
 
@@ -25,6 +28,8 @@ import java.util.List;
 public final class EunomiaPaperPlugin extends JavaPlugin {
 
     private PaperServerTransport transport;
+    private PermissionResolver permissions;
+    private PaperServerConfig serverConfig;
 
     @Override
     public void onEnable() {
@@ -44,16 +49,51 @@ public final class EunomiaPaperPlugin extends JavaPlugin {
         // Register the replicated example store BEFORE channel registration so its sync channels
         // (the bidirectional data channel + eunomia:store_sync) are picked up and force-subscribed below.
         ExampleReplication.enableServer();
+        // The operator's Cloud Sync policy, read from plugins/<this plugin>/eunomia-server.json and installed
+        // as the source the handshake answer derives its advertisement from. Done BEFORE the handshake is
+        // enabled so the very first probe already sees a real policy rather than "no opinion".
+        serverConfig = PaperServerConfig.loadFrom(getDataFolder().toPath(), getSLF4JLogger());
+        serverConfig.install();
+
+        // Built here, at enable, so the LuckPerms lookup happens once - every plugin is loaded by
+        // now, and the per-join path then only reads the cached flag. Built before the admin settings
+        // channel below because that channel's permission check is this very resolver.
+        permissions = new PermissionResolver(getLogger());
+        // The administrative Cloud Sync settings channel, registered BEFORE registerBukkitChannels() so its
+        // three channels are among the ones given a Bukkit plugin-messaging registration below.
+        PaperServerSettings.register(serverConfig, permissions);
+
         // Answer capability probes so a client can detect this Paper server speaks Eunomia.
         CommunicationManager.enableServerHandshake();
 
         List<String> clientboundChannels = registerBukkitChannels();
         ChannelSubscriber subscriber = new ChannelSubscriber(getLogger(), clientboundChannels);
-        getServer().getPluginManager().registerEvents(new PaperJoinListener(subscriber, transport), this);
+        getServer().getPluginManager().registerEvents(new PaperJoinListener(subscriber, transport, permissions), this);
 
         getLogger().info("Eunomia Paper networking enabled ("
                 + CommunicationManager.serverboundTypes().size() + " C2S, "
                 + CommunicationManager.clientboundTypes().size() + " S2C channels).");
+    }
+
+    /**
+     * The permission resolver this plugin enabled with (op -> superperms -> LuckPerms). Exposed so
+     * server-side handlers can ask "is this player an eunomia admin?" without re-detecting LuckPerms.
+     *
+     * @return the resolver, or {@code null} before {@link #onEnable()} ran
+     */
+    public PermissionResolver permissions() {
+        return permissions;
+    }
+
+    /**
+     * The operator's Cloud Sync policy binding this plugin enabled with. Exposed so a plugin embedding Eunomia
+     * can read the effective policy (or {@link PaperServerConfig#reload()} it from its own reload command)
+     * instead of parsing the file a second time.
+     *
+     * @return the binding, or {@code null} before {@link #onEnable()} ran
+     */
+    public PaperServerConfig serverConfig() {
+        return serverConfig;
     }
 
     @Override

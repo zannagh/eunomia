@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.Options;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.MultiLineTextWidget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -38,6 +39,35 @@ public class OptionElementFactory {
 
     public <T> void addSimpleOptionAsWidget(OptionInstance<T> option) {
         widgetAdder.accept(option.createButton(gameOptions, 0, 0, rowWidth));
+    }
+
+    /**
+     * Forces the displayed value of a boolean option widget without notifying the option's own change
+     * listener - the "somebody else changed this, catch up" direction, which vanilla's option plumbing
+     * has no vocabulary for.
+     *
+     * <p>Needed because a widget built from an {@code OptionInstance} owns a copy of the value: once
+     * something other than a click moves the underlying setting (a reset button, a layered default
+     * winning again, an answer arriving from the server), the widget keeps rendering the stale copy.
+     * {@code CycleButton#setValue} is the only public door onto that copy, and on every supported
+     * version it does exactly the two things wanted here and nothing else: it re-derives the caption
+     * and re-runs the tooltip supplier, without ever calling the value-change callback. Verified by
+     * bytecode on 1.20.1, 1.21.x and 26.x - {@code setValue} calls {@code updateValue}, which calls
+     * {@code setMessage} and {@code updateTooltip} only.
+     *
+     * <p>Silently does nothing for a widget that is not a boolean cycle button, so a caller may hand it
+     * whatever {@code createButton} returned without first proving what that was.
+     *
+     * @param widget the widget produced for a boolean {@code OptionInstance}.
+     * @param value the value it should now display.
+     */
+    public static void setBooleanValue(AbstractWidget widget, boolean value) {
+        if (!(widget instanceof CycleButton<?>)) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        CycleButton<Boolean> button = (CycleButton<Boolean>) widget;
+        button.setValue(value);
     }
 
     public void addTextWidget(Component text) {

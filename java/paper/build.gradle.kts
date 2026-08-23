@@ -49,12 +49,22 @@ dependencies {
     // compiling low keeps the one jar loadable on 1.20.1 through 26.x. 1.20.4 (not 1.20.6) because
     // Paper moved to a Java 21 baseline at 1.20.5, but a 1.20.1 server still runs on Java 17.
     compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
+    // LuckPerms API - compileOnly, so it never reaches the shaded jar: on a server
+    // running LuckPerms the classes come from the LuckPerms plugin, and on one that does not, the
+    // only class referencing them (perm/LuckPermsHook) is never loaded because PermissionResolver
+    // gates it behind a plugin-manager + Class.forName presence check.
+    compileOnly("net.luckperms:api:5.4")
 
     testImplementation(platform("org.junit:junit-bom:6.0.1"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation(project(":core"))
     testImplementation("com.google.code.gson:gson:2.11.0")
+    // Bukkit API + Mockito for the PermissionResolver ladder (op -> superperms -> LuckPerms). The
+    // LuckPerms API is deliberately NOT on the test classpath: the soft-dependency test proves the
+    // resolver still works with net.luckperms.* entirely absent.
+    testImplementation("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
+    testImplementation("org.mockito:mockito-core:5.23.0")
 }
 
 java {
@@ -62,12 +72,12 @@ java {
     toolchain.languageVersion = JavaLanguageVersion.of(17)
 }
 
-// plugin.yml is templated like fabric.mod.json / neoforge.mods.toml are, so the published jar
-// advertises the real build version instead of a hardcoded placeholder.
+// plugin.yml / paper-plugin.yml are templated like fabric.mod.json / neoforge.mods.toml are, so the
+// published jar advertises the real build version instead of a hardcoded placeholder.
 val pluginYmlProps = mapOf("version" to version.toString())
 tasks.processResources {
     inputs.properties(pluginYmlProps)
-    filesMatching("plugin.yml") {
+    filesMatching(listOf("plugin.yml", "paper-plugin.yml")) {
         expand(pluginYmlProps)
     }
 }

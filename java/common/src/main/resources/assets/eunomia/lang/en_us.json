@@ -1,0 +1,71 @@
+{
+  "eunomia.settings.title": "Eunomia Settings",
+  "eunomia.settings.button.tooltip": "Open Eunomia's settings: whether your mod data may be synced through a relay server on the internet, and which one.",
+  "eunomia.settings.button.narration": "Open Eunomia settings",
+
+  "eunomia.settings.on": "ON",
+  "eunomia.settings.off": "OFF",
+  "eunomia.settings.effective": "Currently: %s (%s)",
+
+  "eunomia.settings.source.player": "Your choice",
+  "eunomia.settings.source.server": "From server",
+  "eunomia.settings.source.mod": "From mod pack",
+  "eunomia.settings.source.framework": "Eunomia default",
+
+  "eunomia.settings.reset": "Reset",
+  "eunomia.settings.reset.tooltip": "Clear your own setting for %s and go back to following the Minecraft server you join (or, if it says nothing, your mod pack's default). Your value is forgotten.",
+  "eunomia.settings.reset.tooltip.inherited": "There is nothing to reset: you have not overridden %s, so it already follows the Minecraft server you join, or your mod pack's default.",
+  "eunomia.settings.reset.narration": "Clear your override and follow the server again",
+
+  "eunomia.settings.cloudSync": "Cloud Sync",
+  "eunomia.settings.cloudSync.tooltip": "Lets Eunomia send your mod data to a relay server on the internet when the Minecraft server you are playing on does not run Eunomia itself. With it on, that data leaves your machine and is stored by whoever runs the relay. With it off, nothing is ever sent off-box and features that need a relay simply stay unavailable.",
+  "eunomia.settings.cloudSync.narration": "Allow Eunomia to sync your data through an internet relay server",
+
+  "eunomia.settings.cloudSyncServer": "Cloud Sync Server",
+  "eunomia.settings.cloudSyncServer.tooltip": "The relay your data is sent to while Cloud Sync is in use. Leave it empty to use whatever the Minecraft server you join asks for, or the address your mod pack shipped. Only type an address you trust: whoever runs it can read everything Eunomia syncs for you. If you leave out the http:// or https:// part, plain http:// is used. The address is only checked for being well-formed here, nothing is contacted until you actually play.",
+  "eunomia.settings.cloudSyncServer.normalized": "Will be saved as: %s",
+  "eunomia.settings.cloudSyncServer.narration": "Address of the relay server your data is sent to",
+
+  "eunomia.settings.preferCloudSync": "Prefer Cloud Sync",
+  "eunomia.settings.preferCloudSync.tooltip": "Sends through the relay even when the Minecraft server you are on speaks Eunomia and could carry the data itself. That is slower, because every message takes a detour over the internet, and it hands your data to the relay operator instead of keeping it on the server you are playing on. Turn it on only if you want the same data to follow you from server to server.",
+  "eunomia.settings.preferCloudSync.narration": "Use the relay even when the Minecraft server supports Eunomia",
+
+  "eunomia.toast.sync.unavailable.title": "Server sync unavailable",
+  "eunomia.toast.sync.unavailable.description": "This server doesn't run Eunomia. Enable Cloud Sync in settings to keep your data in sync.",
+
+  "eunomia.toast.sync.relay_unreachable.title": "Cloud sync unreachable",
+  "eunomia.toast.sync.relay_unreachable.description": "%s isn't responding. Nothing will be synchronised for this session.",
+
+  "eunomia.toast.sync.new_relay_host.title": "New cloud sync relay",
+  "eunomia.toast.sync.new_relay_host.description": "This server is syncing your data through %s, which you haven't used before. Whoever runs it can read everything Eunomia syncs for you. Change this in Eunomia's settings.",
+
+  "eunomia.settings.server.header": "This Server",
+  "eunomia.settings.server.cloudSync": "Server: Cloud Sync",
+  "eunomia.settings.server.cloudSync.tooltip": "The Minecraft server's own Cloud Sync switch, which applies to everyone playing here, not just you. It is a separate thing from your own Cloud Sync setting above: yours travels with you from server to server, this one stays with this server. Only an administrator of this server can change it.",
+  "eunomia.settings.server.cloudSync.narration": "This server's Cloud Sync setting, for everyone playing here",
+  "eunomia.settings.server.cloudSyncServer": "Server: Relay Address",
+  "eunomia.settings.server.cloudSyncServer.tooltip": "The relay this Minecraft server asks everyone playing here to use. Leave it empty for no relay at all. If you leave out the http:// or https:// part, plain http:// is used. Only an administrator of this server can change it, and the server checks the address again before storing it.",
+  "eunomia.settings.server.cloudSyncServer.narration": "The relay address this server asks everyone to use",
+  "eunomia.settings.server.preferCloudSync": "Server: Prefer Relay",
+  "eunomia.settings.server.preferCloudSync.tooltip": "Whether this Minecraft server wants everyone's data taken the long way round, over the relay, even though the server itself could carry it. It is the same thing as your own Prefer Cloud Sync setting above, but chosen for everyone playing here. That is slower and hands the data to whoever runs the relay. Only an administrator of this server can change it.",
+  "eunomia.settings.server.preferCloudSync.narration": "Whether this server prefers the relay even though it speaks Eunomia itself",
+  "eunomia.settings.server.save": "Save to Server",
+  "eunomia.settings.server.save.tooltip": "Sends the three settings above to the Minecraft server, for everyone playing here. Nothing you change in this section takes effect until you press this and the server answers. The server checks that you are an administrator before it stores anything, so pressing this can come back refused.",
+  "eunomia.settings.server.save.narration": "Send these settings to the Minecraft server",
+  "eunomia.settings.server.status.pending": "Asking the server...",
+  "eunomia.settings.server.status.pending.tooltip": "Waiting for the Minecraft server to say what its settings are. This stops on its own after a few seconds if no answer comes.",
+  "eunomia.settings.server.status.saving": "Sending...",
+  "eunomia.settings.server.status.saving.tooltip": "Waiting for the Minecraft server to say whether it stored your change. This stops on its own after a few seconds if no answer comes.",
+  "eunomia.settings.server.status.admin": "You can change these",
+  "eunomia.settings.server.status.admin.tooltip": "The Minecraft server counts you as an administrator here, so it will let you change what everyone playing on it uses. Change what you want above, then press Save to Server.",
+  "eunomia.settings.server.status.readonly": "Read-only",
+  "eunomia.settings.server.status.readonly.tooltip": "These are the Minecraft server's settings, shown so you can see what it asks of you. You are not an administrator here, so you cannot change them. Your own settings above are still yours to change.",
+  "eunomia.settings.server.status.applied": "Saved on the server",
+  "eunomia.settings.server.status.applied.tooltip": "The Minecraft server stored your change. What you see above is what it now asks of everyone playing here.",
+  "eunomia.settings.server.status.denied": "Server refused",
+  "eunomia.settings.server.status.denied.tooltip": "The Minecraft server would not store your change, because it does not count you as an administrator. Nothing was changed, and what you see above is still what the server uses.",
+  "eunomia.settings.server.status.invalidAddress": "Address rejected",
+  "eunomia.settings.server.status.invalidAddress.tooltip": "The Minecraft server would not store that relay address, because it is not a usable http or https address. Nothing was changed. Try a plain host name like relay.example, or a full address like https://relay.example.",
+  "eunomia.settings.server.status.unavailable": "No answer",
+  "eunomia.settings.server.status.unavailable.tooltip": "The Minecraft server did not answer, most likely because it does not run Eunomia at all. There is nothing here for you to change. Your own settings above still work: turn on Cloud Sync if you want your data synced on servers like this one."
+}

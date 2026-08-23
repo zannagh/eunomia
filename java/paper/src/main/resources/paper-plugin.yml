@@ -1,0 +1,23 @@
+name: Eunomia
+version: ${version}
+main: de.zannagh.eunomia.paper.EunomiaPaperPlugin
+description: Eunomia server-side networking - the mod's server half for servers running Bukkit/Spigot/Paper/Purpur.
+authors:
+  - zannagh
+# Compiled against the 1.20 API and touching no NMS, so the single jar loads on 1.20.1 through 26.x.
+api-version: "1.20"
+
+# Paper's own plugin loader ignores plugin.yml's softdepend, so the same soft dependency is restated
+# in its dialect. join-classpath is what actually lets perm/LuckPermsHook resolve net.luckperms.*
+# when LuckPerms is present; required: false keeps Eunomia loading when it is not.
+dependencies:
+  server:
+    LuckPerms:
+      load: BEFORE
+      required: false
+      join-classpath: true
+
+permissions:
+  eunomia.admin:
+    description: Allows changing Eunomia's server-wide settings from the in-game menu.
+    default: op

@@ -29,3 +29,13 @@ type="required"
 versionRange="${minecraft_version}"
 ordering="NONE"
 side="BOTH"
+
+# Soft dependency: eunomia resolves admin permissions through LuckPerms when it is installed, and
+# falls back to vanilla op levels when it is not. Optional + ordering AFTER so LuckPerms is loaded
+# first where present, without ever being required.
+[[dependencies."eunomia"]]
+modId="luckperms"
+type="optional"
+versionRange="[5.4,)"
+ordering="AFTER"
+side="SERVER"
