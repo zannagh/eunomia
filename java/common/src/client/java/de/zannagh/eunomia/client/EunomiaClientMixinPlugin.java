@@ -61,7 +61,10 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
         // SDL_WINDOW_ACTIVATE_* env vars on the clientGametest run config, so neither is added there.
         // Registered here rather than statically in eunomia.client.mixins.json precisely because the
         // classes compile to empty stubs outside their gate, which `checkMixinConfigs` rejects.
-        //? if >= 26.1-0.snapshot.10 && < 26.3-0.snapshot.2 {
+        // Upper bound 26.3-0.alpha.1 (not .snapshot.2): "pre" sorts before "snapshot" in stonecutter's
+        // prerelease comparison, so the active 26.3-0.pre.2 must be excluded via an alpha sentinel that
+        // precedes every real 26.3 prerelease. Kept identical to WindowFocusMixin's own file gate.
+        //? if >= 26.1-0.snapshot.10 && < 26.3-0.alpha.1 {
         mixins.add("devtools.WindowFocusMixin");
         //?}
         //? if < 26.1-0.snapshot.10 {
