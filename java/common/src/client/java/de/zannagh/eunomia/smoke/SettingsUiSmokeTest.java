@@ -98,7 +98,7 @@ public final class SettingsUiSmokeTest implements FabricClientGameTest {
     }
 
     // Deliberately not ClientGameTestContext#setScreen: this build carries a global stonecutter
-    // replacement that rewrites `.setScreen(` to `.setScreenAndShow(` from 1.21.9 on (the vanilla
+    // replacement that rewrites `.setScreenAndShow(` to `.setScreenAndShow(` from 1.21.9 on (the vanilla
     // rename), and it does not know that FCGT's own context method kept the old name. Going through
     // Minecraft is both correct on every version and the same call the entry button itself makes.
     private void openOnlineOptions(ClientGameTestContext context) {

@@ -29,7 +29,13 @@
 //
 // Only active under the fabric.client.gametest system property, so ordinary dev/play windows still
 // focus exactly as they always did.
-//? if >= 26.1-0.snapshot.10 && < 26.3-0.snapshot.2 {
+//
+// Upper bound is 26.3-0.alpha.1, NOT 26.3-0.snapshot.2: stonecutter compares prerelease identifiers
+// alphabetically, so "pre" < "snapshot" and the active 26.3-0.pre.2 parses as LOWER than any
+// 26.3-0.snapshot.* despite shipping later. A snapshot bound would wrongly re-include this GLFW hook
+// on 26.3 (SDL backend, no org.lwjgl.glfw). An "alpha" sentinel sorts before every real 26.3
+// prerelease, so the whole 26.3 series is excluded.
+//? if >= 26.1-0.snapshot.10 && < 26.3-0.alpha.1 {
 package de.zannagh.eunomia.client.mixins.devtools;
 
 import com.mojang.blaze3d.platform.Window;

@@ -3,7 +3,10 @@ package de.zannagh.eunomia.client.mixins;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import com.mojang.authlib.GameProfile;
-//? if >= 26.3-0.snapshot.2 {
+// 26.3 renamed MinecraftSessionService -> SessionService. Bound is 26.3-0.alpha.1, not .snapshot.2:
+// stonecutter orders prerelease tags alphabetically, so the active 26.3-0.pre.2 sorts BELOW any
+// 26.3-0.snapshot.* and a snapshot bound would (wrongly) keep the removed MinecraftSessionService.
+//? if >= 26.3-0.alpha.1 {
 /*import com.mojang.authlib.minecraft.SessionService;
 *///?} else {
 import com.mojang.authlib.minecraft.MinecraftSessionService;
@@ -25,14 +28,14 @@ public class DevSkinMixin {
             method = "get",
             at = @At(
                     value = "INVOKE",
-                    //? if >= 26.3-0.snapshot.2 {
+                    //? if >= 26.3-0.alpha.1 {
                     /*target = "Lcom/mojang/authlib/minecraft/SessionService;getPackedTextures(Lcom/mojang/authlib/GameProfile;)Lcom/mojang/authlib/properties/Property;"
                     *///?} else {
                     target = "Lcom/mojang/authlib/minecraft/MinecraftSessionService;getPackedTextures(Lcom/mojang/authlib/GameProfile;)Lcom/mojang/authlib/properties/Property;"
                     //?}
             )
     )
-    //? if >= 26.3-0.snapshot.2 {
+    //? if >= 26.3-0.alpha.1 {
     /*private Property injectDevSkinTextures(SessionService service, GameProfile profile, Operation<Property> original) {
     *///?} else {
     private Property injectDevSkinTextures(MinecraftSessionService service, GameProfile profile, Operation<Property> original) {
