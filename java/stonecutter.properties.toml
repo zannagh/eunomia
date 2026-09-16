@@ -58,10 +58,10 @@ java.version = "25"
 display_version = "26.2"
 game_versions = "26.2"
 
-["26.3-pre-2"]
+["26.3"]
 java.version = "25"
-display_version = "26.3-pre.2"
-game_versions = "26.3-pre-2"
+display_version = "26.3"
+game_versions = "26.3"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Per project - loader-specific properties.
@@ -139,9 +139,9 @@ fabricapi.semver = "0.153.0+26.1.2"
 loader_version = "0.19.3"
 fabricapi.semver = "0.153.0+26.2"
 
-["fabric-26.3-pre-2"]
-"fabric.minecraft_version" = "26.3-pre.2"
-"fabric.minecraft_version_range" = ">=26.3-pre.2 <=26.3-pre.2"
+["fabric-26.3"]
+"fabric.minecraft_version" = "26.3"
+"fabric.minecraft_version_range" = ">=26.3 <=26.3"
 loader_version = "0.19.3"
 fabricapi.semver = "0.159.4+26.3"
 
@@ -182,3 +182,7 @@ fabricapi.semver = "0.159.4+26.3"
 ["neoforge-26.2"]
 "neoforge.version" = "26.2.0.32-beta"
 "neoforge.minecraft_version_range" = "[26.2]"
+
+["neoforge-26.3"]
+"neoforge.version" = "26.3.0.1-beta"
+"neoforge.minecraft_version_range" = "[26.3]"
