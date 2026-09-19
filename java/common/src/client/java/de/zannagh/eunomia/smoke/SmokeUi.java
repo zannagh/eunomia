@@ -6,6 +6,7 @@ import de.zannagh.eunomia.client.ui.ScreenAccessor;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 
 import java.lang.reflect.Constructor;
@@ -202,27 +203,29 @@ public final class SmokeUi {
         context.waitTicks(2);
     }
 
-    // Whether an EditBox currently accepts typing, or empty when this version does not expose the flag
-    // under a name we recognise. There is no getter for it on any supported version - only
-    // EditBox#setEditable - so the field is read directly, and the caller decides what an unreadable
-    // answer is worth rather than being handed a made-up boolean.
-    public static Optional<Boolean> editableFlag(AbstractWidget widget) {
-        for (Class<?> type = widget.getClass(); type != null; type = type.getSuperclass()) {
-            for (Field field : type.getDeclaredFields()) {
-                if (field.getType() != boolean.class || Modifier.isStatic(field.getModifiers())) {
-                    continue;
-                }
-                // Matches `isEditable` (official/mojmap) and `editable` alike, without pinning either.
-                if (!field.getName().toLowerCase(java.util.Locale.ROOT).endsWith("editable")) {
-                    continue;
-                }
-                Object value = read(field, widget);
-                if (value instanceof Boolean flag) {
-                    return Optional.of(flag);
-                }
-            }
+    // Whether an EditBox would really accept a keystroke right now - the direct, behavioural read of
+    // what setEditable(boolean) did.
+    //
+    // It replaces a reflective look at the private `isEditable` field, which was a trap: that lookup
+    // answers Optional.empty() whenever the field is spelled differently, and an assertion resting on it
+    // then passes without asserting anything at all. canConsumeInput() is public on every supported
+    // version and is the very predicate charTyped() consults, so there is nothing to mis-name and
+    // nothing to fall back to.
+    //
+    // It reads `isActive() && isFocused() && isEditable()`, so the focus is set here rather than assumed
+    // - an unfocused box would otherwise look uneditable to every caller - and handed back afterwards so
+    // the screen is left as it was found.
+    public static boolean acceptsTyping(ClientGameTestContext context, AbstractWidget widget) {
+        if (!(widget instanceof EditBox box)) {
+            throw new AssertionError("Not an EditBox: " + widget.getClass().getName());
         }
-        return Optional.empty();
+        return context.computeOnClient(client -> {
+            boolean focused = box.isFocused();
+            box.setFocused(true);
+            boolean consumes = box.canConsumeInput();
+            box.setFocused(focused);
+            return consumes;
+        });
     }
 
     // The ARGB an EditBox draws its own text with, or empty when the field is not where it is expected.

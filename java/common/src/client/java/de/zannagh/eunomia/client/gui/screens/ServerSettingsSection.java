@@ -53,6 +53,8 @@ public final class ServerSettingsSection {
 
     private @Nullable AbstractWidget preferControl;
 
+    private @Nullable AbstractWidget enforceControl;
+
     private @Nullable EditBox addressBox;
 
     private @Nullable Button saveButton;
@@ -60,6 +62,8 @@ public final class ServerSettingsSection {
     private boolean fallbackValue;
 
     private boolean preferValue;
+
+    private boolean enforceValue;
 
     private boolean editable;
 
@@ -83,8 +87,10 @@ public final class ServerSettingsSection {
     }
 
     /**
-     * Builds the six widgets of the section, in row order: heading + status, the two toggles, the
-     * address field + Save.
+     * Builds the section, in row order: heading + status, the two policy toggles, the address field +
+     * the enforcement toggle, then Save on a row of its own. The odd count is deliberate and handled by
+     * the caller's pairing (vanilla's {@code addSmall} gives a trailing widget the left half of its own
+     * row): Save is the action, not a setting, and pairing it with a control was always the odd one out.
      * @return the widgets, laid out two per row by the caller.
      */
     public List<AbstractWidget> build() {
@@ -102,6 +108,10 @@ public final class ServerSettingsSection {
         preferControl = addToggle(factory, widgets, "eunomia.settings.server.preferCloudSync",
                 value -> preferValue = value);
         addAddressBox(widgets);
+        // Last of the settings and next to Save, because it is the one that changes what every other
+        // player's client is allowed to do with the three above it.
+        enforceControl = addToggle(factory, widgets, "eunomia.settings.server.enforce",
+                value -> enforceValue = value);
         addSaveButton(widgets);
         setControlsEnabled(false);
         status.pending();
@@ -190,7 +200,8 @@ public final class ServerSettingsSection {
         awaitingAnswer = true;
         setControlsEnabled(false);
         status.saving();
-        ServerSettingsClient.submit(fallbackValue, addressBox.getValue().trim(), preferValue, this::onAnswer);
+        ServerSettingsClient.submit(fallbackValue, addressBox.getValue().trim(), preferValue, enforceValue,
+                this::onAnswer);
     }
 
     /**
@@ -221,11 +232,15 @@ public final class ServerSettingsSection {
     private void showValues(ServerSettingsView view) {
         fallbackValue = view.enableExternalFallback();
         preferValue = view.preferExternalTransport();
+        enforceValue = view.enforceSettings();
         if (fallbackControl != null) {
             OptionElementFactory.setBooleanValue(fallbackControl, fallbackValue);
         }
         if (preferControl != null) {
             OptionElementFactory.setBooleanValue(preferControl, preferValue);
+        }
+        if (enforceControl != null) {
+            OptionElementFactory.setBooleanValue(enforceControl, enforceValue);
         }
         if (addressBox != null) {
             addressBox.setValue(view.externalServerAddress());
@@ -238,6 +253,9 @@ public final class ServerSettingsSection {
         }
         if (preferControl != null) {
             preferControl.active = enabled;
+        }
+        if (enforceControl != null) {
+            enforceControl.active = enabled;
         }
         if (addressBox != null) {
             addressBox.setEditable(enabled);

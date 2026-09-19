@@ -13,7 +13,6 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.MutableComponent;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -32,6 +31,13 @@ import java.util.function.Consumer;
  * exists, so a greyed-out reset button <em>is</em> the "you are following someone else" indicator.
  * The value text on each control names the source outright ("ON - from server"), and the address
  * field shows the inherited address as a greyed-out hint whenever it is left empty.
+ *
+ * <p><strong>A server can take a row away entirely.</strong> When the joined server not only advertises
+ * a setting but declares it enforced, that row's control is disabled and its reset button stays inert:
+ * nothing the player does here changes what the resolver returns while they are on that server, so a
+ * live-looking control would be a lie. The player's own override is neither cleared nor forgotten - it
+ * applies again the moment they leave - and the tooltip, which still renders on a disabled widget, is
+ * what says so, because a greyed-out control with no explanation reads as a broken screen.
  *
  * <p><strong>Why nothing here rebuilds the screen.</strong> Changing one override moves that row's
  * provenance, so labels, tooltips and reset states all have to be recomputed - and the obvious way to
@@ -135,8 +141,8 @@ public final class EunomiaSettingsOptions {
     public void refresh() {
         SyncSettingSource fallback = SyncSettingSource.forExternalFallback();
         boolean fallbackValue = EunomiaSyncSettings.externalFallbackEnabled();
-        setToggle(cloudSyncControl, fallbackValue,
-                "eunomia.settings.cloudSync", describe(onOff(fallbackValue), fallback));
+        setToggle(cloudSyncControl, fallbackValue, "eunomia.settings.cloudSync",
+                SettingsRowText.describe(SettingsRowText.onOff(fallbackValue), fallback), locked(fallback));
         updateReset(cloudSyncReset, fallback, "eunomia.settings.cloudSync");
 
         SyncSettingSource address = SyncSettingSource.forExternalServerAddress();
@@ -145,17 +151,29 @@ public final class EunomiaSettingsOptions {
 
         SyncSettingSource prefer = SyncSettingSource.forPreferExternalTransport();
         boolean preferValue = EunomiaSyncSettings.preferExternalTransport();
-        setToggle(preferControl, preferValue,
-                "eunomia.settings.preferCloudSync", describe(onOff(preferValue), prefer));
+        setToggle(preferControl, preferValue, "eunomia.settings.preferCloudSync",
+                SettingsRowText.describe(SettingsRowText.onOff(preferValue), prefer), locked(prefer));
         updateReset(preferReset, prefer, "eunomia.settings.preferCloudSync");
+    }
+
+    /**
+     * Whether this row is one the joined server enforces, and therefore one the player must not be able
+     * to touch. Derived from the row's own {@link SyncSettingSource} rather than by asking
+     * {@code EunomiaSyncSettings.isLockedByServer} a second time: the source was resolved from that very
+     * predicate a line earlier, and a second read could answer differently if a handshake lands in
+     * between - which is how a control ends up greyed out while its label still claims the player's own
+     * value, or worse, editable while the resolver is overriding it.
+     */
+    private static boolean locked(SyncSettingSource source) {
+        return source == SyncSettingSource.SERVER_ENFORCED;
     }
 
     private void addCloudSyncRow(OptionElementFactory factory, List<AbstractWidget> widgets) {
         factory.addSimpleOptionAsWidget(factory.buildBooleanOption(
                 Component.translatable("eunomia.settings.cloudSync"),
-                tooltipFor("eunomia.settings.cloudSync", Component.empty()),
+                SettingsRowText.tooltipFor("eunomia.settings.cloudSync", Component.empty()),
                 Component.translatable("eunomia.settings.cloudSync.narration"),
-                this::onOff,
+                SettingsRowText::onOff,
                 EunomiaSyncSettings.externalFallbackEnabled(),
                 value -> apply(config -> config.setEnableExternalFallback(value))));
         cloudSyncControl = widgets.get(widgets.size() - 1);
@@ -166,9 +184,9 @@ public final class EunomiaSettingsOptions {
     private void addPreferRow(OptionElementFactory factory, List<AbstractWidget> widgets) {
         factory.addSimpleOptionAsWidget(factory.buildBooleanOption(
                 Component.translatable("eunomia.settings.preferCloudSync"),
-                tooltipFor("eunomia.settings.preferCloudSync", Component.empty()),
+                SettingsRowText.tooltipFor("eunomia.settings.preferCloudSync", Component.empty()),
                 Component.translatable("eunomia.settings.preferCloudSync.narration"),
-                this::onOff,
+                SettingsRowText::onOff,
                 EunomiaSyncSettings.preferExternalTransport(),
                 value -> apply(config -> config.setPreferExternalTransport(value))));
         preferControl = widgets.get(widgets.size() - 1);
@@ -225,44 +243,32 @@ public final class EunomiaSettingsOptions {
         if (addressBox == null) {
             return;
         }
+        boolean locked = locked(source);
         String effective = EunomiaSyncSettings.externalServerAddress();
+        // An enforced address is the server's, so typing into the field could only ever produce an
+        // override that is never consulted. The typed text is deliberately left standing rather than
+        // cleared: it is the player's own value, it comes back into effect the moment they leave this
+        // server, and silently deleting it would be the screen editing a setting the player did not.
+        addressBox.setEditable(!locked);
         // Empty field + greyed inherited address as the hint: that is what "inherit" looks like here.
         addressBox.setHint(Component.literal(effective).withStyle(ChatFormatting.DARK_GRAY));
         addressBox.setTooltip(Tooltip.create(
-                addressTooltip(addressBox.getValue(), effective, source),
+                SettingsRowText.addressTooltip(addressBox.getValue(), effective, source, locked),
                 Component.translatable("eunomia.settings.cloudSyncServer.narration")));
     }
 
-    /**
-     * The address tooltip, plus - while the typed text would be stored as something other than itself -
-     * a line naming the exact string that will be saved. That line is the screen's answer to "a bare
-     * host becomes what, exactly": it shows the {@code http://} that {@code RelayAddresses} will add,
-     * rather than leaving the player to assume a scheme.
-     */
-    private static MutableComponent addressTooltip(String typed, String effective, SyncSettingSource source) {
-        MutableComponent tooltip = tooltipFor("eunomia.settings.cloudSyncServer",
-                describe(Component.literal(effective), source));
-        String trimmed = typed.trim();
-        if (!trimmed.isEmpty() && RelayAddress.isValid(trimmed)) {
-            String normalized = RelayAddress.normalize(trimmed);
-            if (!normalized.equals(trimmed)) {
-                tooltip.append("\n\n").append(Component
-                        .translatable("eunomia.settings.cloudSyncServer.normalized", normalized)
-                        .withStyle(ChatFormatting.GRAY));
-            }
-        }
-        return tooltip;
-    }
-
     private static void setToggle(@Nullable AbstractWidget control, boolean value,
-                                  String settingKey, Component effective) {
+                                  String settingKey, Component effective, boolean locked) {
         if (control == null) {
             return;
         }
         // Order matters: setValue re-runs the option's own tooltip supplier, which still holds the
         // placeholder handed to it at build time, so the real tooltip has to be written afterwards.
         OptionElementFactory.setBooleanValue(control, value);
-        control.setTooltip(Tooltip.create(tooltipFor(settingKey, effective),
+        // A disabled control with no explanation reads as a broken screen, so the tooltip - which stays
+        // readable on an inactive widget - is what has to carry the reason.
+        control.active = !locked;
+        control.setTooltip(Tooltip.create(SettingsRowText.tooltipFor(settingKey, effective, locked),
                 Component.translatable(settingKey + ".narration")));
     }
 
@@ -270,26 +276,17 @@ public final class EunomiaSettingsOptions {
         if (button == null) {
             return;
         }
+        boolean locked = locked(source);
         boolean overridden = source.isPlayerOverride();
         button.setMessage(overridden ? Component.translatable("eunomia.settings.reset") : source.label());
-        button.active = overridden;
+        // The `!locked` half is redundant today - SERVER_ENFORCED is never a player override, so
+        // `overridden` is already false while locked - and it is written out anyway: an enforced row
+        // must not offer a reset, and that must not be a property this button inherits by accident from
+        // how SyncSettingSource happens to answer isPlayerOverride().
+        button.active = overridden && !locked;
         button.setTooltip(Tooltip.create(
-                Component.translatable(overridden
-                        ? "eunomia.settings.reset.tooltip"
-                        : "eunomia.settings.reset.tooltip.inherited", Component.translatable(settingKey)),
+                Component.translatable(SettingsRowText.resetTooltipKey(overridden, locked),
+                        Component.translatable(settingKey)),
                 Component.translatable("eunomia.settings.reset.narration")));
-    }
-
-    private Component onOff(boolean value) {
-        return Component.translatable(value ? "eunomia.settings.on" : "eunomia.settings.off");
-    }
-
-    static MutableComponent tooltipFor(String settingKey, Component effective) {
-        return Component.translatable(settingKey + ".tooltip").append("\n\n").append(effective);
-    }
-
-    static MutableComponent describe(Component value, SyncSettingSource source) {
-        return Component.translatable("eunomia.settings.effective", value, source.label())
-                .withStyle(ChatFormatting.GRAY);
     }
 }

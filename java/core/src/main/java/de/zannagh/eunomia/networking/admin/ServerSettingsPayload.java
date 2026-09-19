@@ -12,9 +12,10 @@ import de.zannagh.eunomia.configuration.EunomiaServerConfig;
  * only job is to spare the UI from guessing, so a non-administrator sees greyed-out controls rather than
  * discovering the refusal after typing.</p>
  *
- * <p>The values themselves are not privileged: a server already advertises exactly these three to every
- * joining client as its {@code ServerSyncPolicy} in the capability handshake. Withholding them from a
- * non-administrator here would be theatre, so a non-administrator receives a genuine, read-only snapshot
+ * <p>The values themselves are not privileged: a server already advertises exactly these to every joining
+ * client as its {@code ServerSyncPolicy} in the capability handshake - the enforcement flag included, since
+ * a client cannot honour a lock it has not been told about. Withholding them from a non-administrator here
+ * would be theatre, so a non-administrator receives a genuine, read-only snapshot
  * ({@code editable = false}) rather than a refusal.</p>
  *
  * @since 0.3.0
@@ -33,6 +34,14 @@ public class ServerSettingsPayload {
     /** The server's current {@code preferExternalTransport}. */
     public boolean preferExternalTransport;
 
+    /**
+     * Whether the server's current values are enforced on every client rather than merely advertised.
+     * <p>
+     * Read-back state, so the admin screen can show the checkbox as it really stands instead of guessing.
+     * Unlike {@link #editable} this is a value, not a hint: it is the flag the server is actually applying.
+     */
+    public boolean enforceSettings;
+
     /** Whether the <em>server</em> considers this player allowed to edit. A hint for rendering only. */
     public boolean editable;
 
@@ -50,6 +59,7 @@ public class ServerSettingsPayload {
             boolean enableExternalFallback,
             String externalServerAddress,
             boolean preferExternalTransport,
+            boolean enforceSettings,
             boolean editable,
             ServerSettingsStatus status,
             String detail) {
@@ -57,6 +67,7 @@ public class ServerSettingsPayload {
         this.enableExternalFallback = enableExternalFallback;
         this.externalServerAddress = externalServerAddress;
         this.preferExternalTransport = preferExternalTransport;
+        this.enforceSettings = enforceSettings;
         this.editable = editable;
         this.status = status;
         this.detail = detail;
@@ -84,6 +95,7 @@ public class ServerSettingsPayload {
                 config.externalFallbackEnabled(),
                 address == null ? "" : address,
                 config.preferExternalTransport(),
+                config.enforcesSettings(),
                 editable,
                 status,
                 detail);

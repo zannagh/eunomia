@@ -69,4 +69,31 @@ class SyncDiagnosticsTest {
             assertThat(both).as("both toasts fire for %s", s).isFalse();
         }
     }
+
+    // ── Which card, and under which id ──────────────────────────────────────────────────────────
+
+    @Test
+    void eunomiaSpeaksForItselfOnlyWhileNoConsumerHasRegisteredWording() {
+        assertThat(SyncDiagnostics.useGenericMissingSyncNotice(0)).isTrue();
+    }
+
+    @Test
+    void oneRegisteredConsumerReplacesTheGenericCardRatherThanAddingToIt() {
+        assertThat(SyncDiagnostics.useGenericMissingSyncNotice(1)).isFalse();
+        assertThat(SyncDiagnostics.useGenericMissingSyncNotice(3)).isFalse();
+    }
+
+    @Test
+    void everyConsumerGetsItsOwnToastIdSoTheCardsDoNotReplaceEachOther() {
+        assertThat(SyncDiagnostics.missingSyncToastKey("armorhider"))
+                .isEqualTo("eunomia:sync_unavailable/armorhider");
+        assertThat(SyncDiagnostics.missingSyncToastKey("armorhider"))
+                .isNotEqualTo(SyncDiagnostics.missingSyncToastKey("othermod"));
+    }
+
+    @Test
+    void anAbsentConsumerIdYieldsEunomiasOwnToastId() {
+        assertThat(SyncDiagnostics.missingSyncToastKey(null)).isEqualTo("eunomia:sync_unavailable");
+        assertThat(SyncDiagnostics.missingSyncToastKey("  ")).isEqualTo("eunomia:sync_unavailable");
+    }
 }

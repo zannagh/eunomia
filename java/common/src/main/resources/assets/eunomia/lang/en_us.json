@@ -9,6 +9,7 @@
 
   "eunomia.settings.source.player": "Your choice",
   "eunomia.settings.source.server": "From server",
+  "eunomia.settings.source.serverEnforced": "Locked by server",
   "eunomia.settings.source.mod": "From mod pack",
   "eunomia.settings.source.framework": "Eunomia default",
 
@@ -16,6 +17,9 @@
   "eunomia.settings.reset.tooltip": "Clear your own setting for %s and go back to following the Minecraft server you join (or, if it says nothing, your mod pack's default). Your value is forgotten.",
   "eunomia.settings.reset.tooltip.inherited": "There is nothing to reset: you have not overridden %s, so it already follows the Minecraft server you join, or your mod pack's default.",
   "eunomia.settings.reset.narration": "Clear your override and follow the server again",
+  "eunomia.settings.reset.tooltip.locked": "There is nothing to reset here: this server enforces %s, so whatever you had chosen does not apply while you are playing on it. It is kept, and applies again on servers that do not enforce it.",
+
+  "eunomia.settings.locked": "The server you are playing on requires this setting and does not let you change it here. Your own choice is not lost - it applies again as soon as you leave this server.",
 
   "eunomia.settings.cloudSync": "Cloud Sync",
   "eunomia.settings.cloudSync.tooltip": "Lets Eunomia send your mod data to a relay server on the internet when the Minecraft server you are playing on does not run Eunomia itself. With it on, that data leaves your machine and is stored by whoever runs the relay. With it off, nothing is ever sent off-box and features that need a relay simply stay unavailable.",
@@ -49,8 +53,11 @@
   "eunomia.settings.server.preferCloudSync": "Server: Prefer Relay",
   "eunomia.settings.server.preferCloudSync.tooltip": "Whether this Minecraft server wants everyone's data taken the long way round, over the relay, even though the server itself could carry it. It is the same thing as your own Prefer Cloud Sync setting above, but chosen for everyone playing here. That is slower and hands the data to whoever runs the relay. Only an administrator of this server can change it.",
   "eunomia.settings.server.preferCloudSync.narration": "Whether this server prefers the relay even though it speaks Eunomia itself",
+  "eunomia.settings.server.enforce": "Server: Enforce",
+  "eunomia.settings.server.enforce.tooltip": "Makes the settings above binding for everyone playing here instead of merely suggested. With it off, a player can still choose their own Cloud Sync settings and this server's values only apply to players who have not. With it on, every player's controls for these settings are locked to what this server says for as long as they are connected. Only settings this server has actually set are locked; the rest are left to the player as before. Only an administrator of this server can change it.",
+  "eunomia.settings.server.enforce.narration": "Whether this server forces its Cloud Sync settings on everyone playing here",
   "eunomia.settings.server.save": "Save to Server",
-  "eunomia.settings.server.save.tooltip": "Sends the three settings above to the Minecraft server, for everyone playing here. Nothing you change in this section takes effect until you press this and the server answers. The server checks that you are an administrator before it stores anything, so pressing this can come back refused.",
+  "eunomia.settings.server.save.tooltip": "Sends the settings above to the Minecraft server, for everyone playing here. Nothing you change in this section takes effect until you press this and the server answers. The server checks that you are an administrator before it stores anything, so pressing this can come back refused.",
   "eunomia.settings.server.save.narration": "Send these settings to the Minecraft server",
   "eunomia.settings.server.status.pending": "Asking the server...",
   "eunomia.settings.server.status.pending.tooltip": "Waiting for the Minecraft server to say what its settings are. This stops on its own after a few seconds if no answer comes.",

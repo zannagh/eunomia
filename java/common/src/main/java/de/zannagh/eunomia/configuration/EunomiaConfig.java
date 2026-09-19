@@ -5,7 +5,6 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * The client-side Eunomia configuration - the player's personal say over the external ("Cloud Sync") transport.
@@ -33,6 +32,16 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
     /** The override shape: three nullable knobs plus the persisted {@link #schemaVersion} marker. */
     public static final SemanticVersion SCHEMA_1_1_0 = new SemanticVersion(1, 1, 0, null);
 
+    /** Ceiling on {@link #seenRelayHosts}; a player reaches a handful of relays, never this many. */
+    private static final int MAX_SEEN_RELAY_HOSTS = 64;
+
+    /**
+     * Ceiling on {@link #announcedSyncUnavailableServers}. Unlike relay hosts this is genuinely reachable - a
+     * player who hops between many servers accumulates one entry each - so it evicts oldest-first, at a cost
+     * of one repeated card on a server not visited in a very long time.
+     */
+    private static final int MAX_ANNOUNCED_SYNC_UNAVAILABLE_SERVERS = 128;
+
     /**
      * Whether the external relay fallback is opted into, or {@code null} to inherit. Boxed on purpose - see the
      * class doc; {@code false} here is an explicit "no", not an absence.
@@ -58,6 +67,20 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
      * on each of those would be nagging rather than informing.
      */
     public @Nullable List<String> seenRelayHosts;
+
+    /**
+     * Every Minecraft server address this client has already been told has no eunomia sync, lower-cased, in
+     * the order first seen. Not a setting either; see {@link #seenRelayHosts} for why it lives here.
+     * <p>
+     * It exists because the notification it damps is otherwise raised on <em>every</em> join, forever, to a
+     * player who has simply decided not to use Cloud Sync. Saying it once per server is information; saying
+     * it on the four hundredth join is why people turn toasts off wholesale.
+     * <p>
+     * Keyed by the joined server's address - the same value the relay partitions data by - because that is
+     * what the message is <em>about</em>: a different server is a different answer to "does this one run
+     * eunomia", and the same server is the same answer whether joined this evening or last year.
+     */
+    public @Nullable List<String> announcedSyncUnavailableServers;
 
     /**
      * The schema this document was written with, persisted so migrations can be detected at all.
@@ -134,8 +157,7 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
 
     /** Whether {@code host} has already been recorded as a relay this client sent data through. */
     public synchronized boolean hasSeenRelayHost(@Nullable String host) {
-        String normalized = normalizeHost(host);
-        return normalized != null && seenRelayHosts != null && seenRelayHosts.contains(normalized);
+        return SeenValues.contains(seenRelayHosts, host);
     }
 
     /**
@@ -150,17 +172,12 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
      * @return {@code true} when this call was the first to record {@code host}.
      */
     public synchronized boolean rememberRelayHost(@Nullable String host) {
-        String normalized = normalizeHost(host);
-        if (normalized == null) {
-            return false;
-        }
         if (seenRelayHosts == null) {
             seenRelayHosts = new ArrayList<>();
         }
-        if (seenRelayHosts.contains(normalized)) {
+        if (!SeenValues.remember(seenRelayHosts, host, MAX_SEEN_RELAY_HOSTS)) {
             return false;
         }
-        seenRelayHosts.add(normalized);
         setHasChangedFromSerializedContent();
         return true;
     }
@@ -173,11 +190,39 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
         }
     }
 
-    private static @Nullable String normalizeHost(@Nullable String host) {
-        if (host == null || host.isBlank()) {
-            return null;
+    // ── Servers already told about (see {@link #announcedSyncUnavailableServers}) ───────────────
+
+    /** Whether {@code serverScope} has already had its missing server-side sync announced. */
+    public synchronized boolean hasAnnouncedSyncUnavailable(@Nullable String serverScope) {
+        return SeenValues.contains(announcedSyncUnavailableServers, serverScope);
+    }
+
+    /**
+     * Records that the "this server has no eunomia sync" notification has now been shown for
+     * {@code serverScope}, and reports whether that was news. Test-and-set in one synchronized step, for the
+     * same reason {@link #rememberRelayHost(String)} is.
+     *
+     * @param serverScope the joined server's address, in any case; {@code null} and blank are ignored.
+     * @return {@code true} when this call was the first to record {@code serverScope}.
+     */
+    public synchronized boolean rememberAnnouncedSyncUnavailable(@Nullable String serverScope) {
+        if (announcedSyncUnavailableServers == null) {
+            announcedSyncUnavailableServers = new ArrayList<>();
         }
-        return host.trim().toLowerCase(Locale.ROOT);
+        if (!SeenValues.remember(
+                announcedSyncUnavailableServers, serverScope, MAX_ANNOUNCED_SYNC_UNAVAILABLE_SERVERS)) {
+            return false;
+        }
+        setHasChangedFromSerializedContent();
+        return true;
+    }
+
+    /** Forgets every announced server, so each one is announced once more. Tests, and a player-facing reset. */
+    public synchronized void forgetAnnouncedSyncUnavailableServers() {
+        if (announcedSyncUnavailableServers != null && !announcedSyncUnavailableServers.isEmpty()) {
+            announcedSyncUnavailableServers.clear();
+            setHasChangedFromSerializedContent();
+        }
     }
 
     // ── Legacy accessors (client-local view only) ───────────────────────────────────────────────
@@ -214,6 +259,7 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
         this.externalServerAddress = newValue.externalServerAddress;
         this.preferExternalTransport = newValue.preferExternalTransport;
         this.seenRelayHosts = newValue.seenRelayHosts;
+        this.announcedSyncUnavailableServers = newValue.announcedSyncUnavailableServers;
         this.schemaVersion = newValue.schemaVersion;
     }
 
@@ -276,6 +322,7 @@ public class EunomiaConfig implements ConfigurationItem<EunomiaConfig> {
                 old.externalServerAddressOverride(),
                 old.preferExternalTransport);
         migrated.seenRelayHosts = old.seenRelayHosts;
+        migrated.announcedSyncUnavailableServers = old.announcedSyncUnavailableServers;
         return migrated;
     }
 }

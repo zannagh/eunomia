@@ -1,5 +1,7 @@
 package de.zannagh.eunomia.diagnostics;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * The suppression rules behind eunomia's two sync diagnostic toasts, as pure functions over a
  * {@link ClientSyncState}.
@@ -16,7 +18,43 @@ package de.zannagh.eunomia.diagnostics;
  */
 public final class SyncDiagnostics {
 
+    /** Toast-id key of eunomia's own "this server has no sync" card, and the stem every consumer's card gets. */
+    public static final String MISSING_SERVER_SYNC_TOAST_KEY = "eunomia:sync_unavailable";
+
     private SyncDiagnostics() {
+    }
+
+    /**
+     * Whether the "no server-side sync" card should carry eunomia's own generic copy rather than a consuming
+     * mod's wording.
+     *
+     * <p>Only when nobody has registered any. A consumer that has said what it wants the player to read has
+     * said it better than the library can - eunomia's copy can only talk about eunomia, which is not the mod
+     * the player installed - so once even one registration exists the generic card is <em>replaced</em>, not
+     * added to. Otherwise a single consumer would produce two cards saying the same thing.</p>
+     *
+     * @param registeredConsumers how many consuming mods have supplied their own wording.
+     * @return {@code true} when eunomia should raise its own card instead.
+     */
+    public static boolean useGenericMissingSyncNotice(int registeredConsumers) {
+        return registeredConsumers <= 0;
+    }
+
+    /**
+     * The toast-id key a "no server-side sync" card is raised under.
+     *
+     * <p>Derived from the consumer id so that N registered mods produce N distinct notifications rather than
+     * N attempts to be the same one - toasts sharing an id can replace each other, and a player told about
+     * three unsynchronised mods should see three cards.</p>
+     *
+     * @param consumerId the registering mod's id, or {@code null} for eunomia's own generic card.
+     * @return the namespaced toast-id key.
+     */
+    public static String missingSyncToastKey(@Nullable String consumerId) {
+        if (consumerId == null || consumerId.isBlank()) {
+            return MISSING_SERVER_SYNC_TOAST_KEY;
+        }
+        return MISSING_SERVER_SYNC_TOAST_KEY + "/" + consumerId.trim();
     }
 
     /**

@@ -1,11 +1,15 @@
 package de.zannagh.eunomia.client.configuration;
 
 import de.zannagh.eunomia.client.gui.screens.EunomiaSettingsEntryPoint;
+import de.zannagh.eunomia.client.toast.SyncUnavailableNotice;
+import de.zannagh.eunomia.client.toast.SyncUnavailableNotices;
 import de.zannagh.eunomia.configuration.EunomiaConfiguration;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -44,6 +48,8 @@ public final class EunomiaClientConfiguration {
     private @Nullable Class<? extends Screen> targetScreen;
 
     private @Nullable Component label;
+
+    private final List<SyncUnavailableNotice> syncUnavailableNotices = new ArrayList<>();
 
     private boolean applied;
 
@@ -112,6 +118,45 @@ public final class EunomiaClientConfiguration {
     }
 
     /**
+     * Supplies your mod's own wording for the "this server offers no eunomia sync" notification, replacing
+     * eunomia's generic copy with something that names your mod and its setting - for example
+     * {@code "Armor Hider can synchronise via Cloud. Go to Settings to enable it."}
+     *
+     * <p>Every mod that registers gets its own card; see {@link SyncUnavailableNotices} for why that is a
+     * registry and not a single overridable slot. Keyed by your mod id, so calling this twice in the same
+     * chain, or across re-inits, replaces rather than accumulates.</p>
+     *
+     * <p>Eunomia ships no lang files for consumer text, so resolve the component in your own namespace.</p>
+     *
+     * @param consumerId  your mod id.
+     * @param description the line the player reads.
+     * @return this builder.
+     */
+    public EunomiaClientConfiguration syncUnavailableNotice(String consumerId, Component description) {
+        return syncUnavailableNotice(consumerId, null, description);
+    }
+
+    /**
+     * As {@link #syncUnavailableNotice(String, Component)}, but overriding the headline too. Most consumers
+     * want the default: the situation is the same whoever reports it, and only the advice is mod-specific.
+     *
+     * @param consumerId  your mod id.
+     * @param title       the bold first line, or {@code null} for eunomia's generic one.
+     * @param description the line the player reads.
+     * @return this builder.
+     */
+    public EunomiaClientConfiguration syncUnavailableNotice(
+            String consumerId,
+            @Nullable Component title,
+            Component description) {
+        checkNotApplied();
+        Objects.requireNonNull(consumerId, "consumerId");
+        Objects.requireNonNull(description, "description");
+        syncUnavailableNotices.add(new SyncUnavailableNotice(consumerId, title, description));
+        return this;
+    }
+
+    /**
      * Your mod's default for the external relay opt-in. See {@link EunomiaConfiguration#externalFallback}.
      * @param value the default to ship, or {@code null} to clear a previously expressed opinion.
      * @return this builder.
@@ -167,6 +212,9 @@ public final class EunomiaClientConfiguration {
         }
         if (label != null) {
             EunomiaSettingsEntryPoint.setLabel(label);
+        }
+        for (SyncUnavailableNotice notice : syncUnavailableNotices) {
+            SyncUnavailableNotices.register(notice.consumerId(), notice.title(), notice.description());
         }
         common.apply();
     }

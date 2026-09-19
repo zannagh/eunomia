@@ -39,8 +39,8 @@ public final class SettingsUiSmokeTest implements FabricClientGameTest {
 
     private static final String NORMALISED_ADDRESS = "http://relay.example";
 
-    private static final List<String> PROVENANCE_LABELS =
-            List.of("Reset", "Your choice", "From server", "From mod pack", "Eunomia default");
+    private static final List<String> PROVENANCE_LABELS = List.of(
+            "Reset", "Your choice", "From server", "Locked by server", "From mod pack", "Eunomia default");
 
     private Screen parent;
 
@@ -69,6 +69,7 @@ public final class SettingsUiSmokeTest implements FabricClientGameTest {
         assertSuppression(context);
         assertCustomLabel(context);
         assertAddressCommitsNormalised(context);
+        EnforcedRowsSmoke.run(context, parent);
         // Last, because it is the only phase that needs a world; everything above is deliberately
         // connection-free and would only be slowed down by one.
         ServerSectionSmoke.run(context, parent);
