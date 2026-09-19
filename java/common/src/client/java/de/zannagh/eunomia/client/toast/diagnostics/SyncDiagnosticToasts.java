@@ -3,6 +3,8 @@ package de.zannagh.eunomia.client.toast.diagnostics;
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.client.networking.LocalClientIdentity;
 import de.zannagh.eunomia.client.toast.EunomiaToasts;
+import de.zannagh.eunomia.client.toast.SyncUnavailableNotice;
+import de.zannagh.eunomia.client.toast.SyncUnavailableNotices;
 import de.zannagh.eunomia.client.toast.ToastId;
 import de.zannagh.eunomia.configuration.EunomiaSyncSettings;
 import de.zannagh.eunomia.diagnostics.ClientSyncState;
@@ -10,6 +12,9 @@ import de.zannagh.eunomia.diagnostics.SyncDiagnostics;
 import de.zannagh.eunomia.networking.handshake.ServerCapabilities;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 
 /**
  * Eunomia's own three diagnostic toasts: "this server has no eunomia sync", "your cloud sync relay is not
@@ -50,7 +55,8 @@ public final class SyncDiagnosticToasts {
     /** Translation key for the description of the "new relay" toast; takes the relay host. */
     public static final String NEW_RELAY_HOST_DESCRIPTION = "eunomia.toast.sync.new_relay_host.description";
 
-    private static final ToastId MISSING_SERVER_SYNC_ID = ToastId.of("eunomia:sync_unavailable");
+    private static final ToastId MISSING_SERVER_SYNC_ID =
+            ToastId.of(SyncDiagnostics.missingSyncToastKey(null));
     private static final ToastId RELAY_UNREACHABLE_ID = ToastId.of("eunomia:relay_unreachable");
     private static final ToastId NEW_RELAY_HOST_ID = ToastId.of("eunomia:new_relay_host");
 
@@ -80,14 +86,57 @@ public final class SyncDiagnosticToasts {
             if (!SyncDiagnostics.shouldWarnMissingServerSync(state)) {
                 return;
             }
-            EunomiaToasts.toast(Component.translatable(MISSING_SERVER_SYNC_TITLE))
-                    .description(Component.translatable(MISSING_SERVER_SYNC_DESCRIPTION))
-                    .id(MISSING_SERVER_SYNC_ID)
-                    .show();
+            // Second gate, and the one that keeps this from being nagging: the situation warranting a card is
+            // permanent for a server that simply does not run eunomia, so without this it would be raised on
+            // every join for the rest of the install's life.
+            if (!EunomiaSyncSettings.recordSyncUnavailableAnnouncement(currentServerScope())) {
+                return;
+            }
+            announceMissingServerSync();
         } catch (Exception e) {
             // A diagnostic must never be able to break the thing it is diagnosing.
             Eunomia.LOGGER.debug("Failed to evaluate the missing-server-sync toast", e);
         }
+    }
+
+    /**
+     * Draws the "no server-side sync here" notification, letting the consuming mods do the talking where they
+     * have asked to.
+     *
+     * <p>One card per mod that registered wording with {@link SyncUnavailableNotices}, and eunomia's own
+     * generic card only when none did. A player who installed one mod gets one card in that mod's words; a
+     * player who installed three gets three, which is honest - three mods really are going unsynchronised -
+     * and is what a registry rather than a single overridable slot buys. Each card gets a toast id derived
+     * from its consumer id so the cards are distinct notifications rather than one another's replacement.</p>
+     */
+    private static void announceMissingServerSync() {
+        List<SyncUnavailableNotice> notices = SyncUnavailableNotices.registered();
+        if (SyncDiagnostics.useGenericMissingSyncNotice(notices.size())) {
+            EunomiaToasts.toast(Component.translatable(MISSING_SERVER_SYNC_TITLE))
+                    .description(Component.translatable(MISSING_SERVER_SYNC_DESCRIPTION))
+                    .id(MISSING_SERVER_SYNC_ID)
+                    .show();
+            return;
+        }
+        for (SyncUnavailableNotice notice : notices) {
+            Component title = notice.title() == null
+                    ? Component.translatable(MISSING_SERVER_SYNC_TITLE)
+                    : notice.title();
+            EunomiaToasts.toast(title)
+                    .description(notice.description())
+                    .id(ToastId.of(SyncDiagnostics.missingSyncToastKey(notice.consumerId())))
+                    .show();
+        }
+    }
+
+    /**
+     * The address of the server this client is connected to, or {@code null} when there is none to name.
+     * This is the dedup key: it is what the notification is about, it is stable for a given server list entry
+     * across joins and restarts, and it is the same value the relay already partitions data by.
+     */
+    private static @Nullable String currentServerScope() {
+        Minecraft client = Minecraft.getInstance();
+        return client == null ? null : LocalClientIdentity.currentServerScope(client);
     }
 
     /**

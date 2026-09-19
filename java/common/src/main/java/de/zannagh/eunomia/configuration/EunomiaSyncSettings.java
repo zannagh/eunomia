@@ -1,10 +1,13 @@
 package de.zannagh.eunomia.configuration;
 
+import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.clients.RelayAddresses;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import org.jspecify.annotations.Nullable;
 
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -15,11 +18,18 @@ import java.util.function.Supplier;
  *
  * <p>Precedence, highest first:</p>
  * <ol>
+ *   <li>a value the joined server <em>enforces</em> - it has both stated an opinion on that setting and declared
+ *       it non-negotiable. Nothing outranks it, the player's own override included, because the point of
+ *       enforcement is that relay traffic cannot be made to bypass the server the player joined;</li>
  *   <li>the player's explicit override in {@link EunomiaConfig} (a non-null field - a deliberate choice);</li>
  *   <li>the policy the joined server advertised in the capability handshake ({@link ServerSyncPolicy});</li>
  *   <li>the consuming mod's client-side default ({@link EunomiaSyncDefaults});</li>
  *   <li>the framework default ({@link EunomiaDefaults}).</li>
  * </ol>
+ *
+ * <p>Enforcement is not a rung of its own so much as a promotion of rung two, and it is deliberately narrow: a
+ * server can only enforce what it actually has a value for, so "enforce" over a setting the server says nothing
+ * about changes nothing at all. A server that does not enforce behaves exactly as it always has.</p>
  *
  * <p>Rungs one to three are all "no opinion by default", so a plain install lands on the framework defaults and
  * nothing leaves the machine. Both sources are injectable suppliers rather than hard references: it keeps this
@@ -69,8 +79,8 @@ public final class EunomiaSyncSettings {
     /** Whether the external relay may be used at all for this connection. */
     public static boolean externalFallbackEnabled() {
         return resolve(
+                SyncSetting.EXTERNAL_FALLBACK,
                 EunomiaConfig::enableExternalFallbackOverride,
-                ServerSyncPolicy::enableExternalFallback,
                 EunomiaSyncDefaults.enableExternalFallback(),
                 EunomiaDefaults.DEFAULT_ENABLE_EXTERNAL_FALLBACK);
     }
@@ -92,8 +102,8 @@ public final class EunomiaSyncSettings {
      */
     public static String externalServerAddress() {
         return resolve(
+                SyncSetting.EXTERNAL_SERVER_ADDRESS,
                 EunomiaConfig::externalServerAddressOverride,
-                EunomiaSyncSettings::validAdvertisedAddress,
                 EunomiaSyncDefaults.externalServerAddress(),
                 EunomiaDefaults.DEFAULT_EXTERNAL_SERVER_ADDRESS);
     }
@@ -112,8 +122,8 @@ public final class EunomiaSyncSettings {
     /** Whether the relay should be preferred even when the joined Minecraft server speaks Eunomia. */
     public static boolean preferExternalTransport() {
         return resolve(
+                SyncSetting.PREFER_EXTERNAL_TRANSPORT,
                 EunomiaConfig::preferExternalTransportOverride,
-                ServerSyncPolicy::preferExternalTransport,
                 EunomiaSyncDefaults.preferExternalTransport(),
                 EunomiaDefaults.DEFAULT_PREFER_EXTERNAL_TRANSPORT);
     }
@@ -162,6 +172,55 @@ public final class EunomiaSyncSettings {
         return firstTime && serverSteeredOntoTheRelay() ? host : null;
     }
 
+    /**
+     * Records that the "this server offers no eunomia sync" notification is being shown for
+     * {@code serverScope}, and reports whether it should be shown at all - {@code false} once that server has
+     * already been announced.
+     *
+     * <p>This is the "have I said this already" half of the missing-server-sync diagnostic, kept here rather
+     * than in the client code that draws it for the same reason the relay-host bookkeeping is: the client
+     * source set has no tests, and the decision whether eunomia nags is exactly the part worth covering. The
+     * other half - whether the situation warrants a card in the first place - stays in
+     * {@code SyncDiagnostics}, which is a pure predicate over the connection's facts. Both must hold.</p>
+     *
+     * <p>A query with a side effect, deliberately: the record and the "was it new" answer have to be one
+     * atomic step or two resolutions racing through the same server both announce it.</p>
+     *
+     * <p>Unlike {@link #recordRelayHostAndReportIfNewlyServerChosen()} this flushes the config to disk
+     * immediately. Merely marking it dirty would leave the record durable only if the player later happens to
+     * open the settings screen, which is precisely the player who never will - so the notification would come
+     * back on the next launch and the dedup would only work within a session.</p>
+     *
+     * @param serverScope the joined Minecraft server's address; {@code null} and blank suppress the card,
+     *                    because a server that cannot be identified cannot be announced only once.
+     * @return {@code true} when this server has not been announced before and the card should be raised.
+     */
+    public static boolean recordSyncUnavailableAnnouncement(@Nullable String serverScope) {
+        EunomiaConfig config = clientConfig();
+        if (config == null) {
+            return false;
+        }
+        if (!config.rememberAnnouncedSyncUnavailable(serverScope)) {
+            return false;
+        }
+        persistClientConfig();
+        return true;
+    }
+
+    /**
+     * Flushes the client config, swallowing everything. The caller is a diagnostic: losing the record costs
+     * one repeated notification, while letting an IO failure out of here would break the join it rode in on.
+     */
+    private static void persistClientConfig() {
+        try {
+            if (Eunomia.CONFIG_PROVIDER != null) {
+                Eunomia.CONFIG_PROVIDER.saveCurrent();
+            }
+        } catch (Exception e) {
+            Eunomia.LOGGER.debug("Failed to persist the sync-diagnostic bookkeeping", e);
+        }
+    }
+
     /** Whether the joined server is what put this connection on a relay, as opposed to the player or the mod. */
     private static boolean serverSteeredOntoTheRelay() {
         ServerSyncPolicy policy = advertisedPolicy();
@@ -169,13 +228,82 @@ public final class EunomiaSyncSettings {
                 || validAdvertisedAddress(policy) != null;
     }
 
+    // ── Enforcement (public API for consuming mods' own UIs) ───────────────────────────────────
+
+    /**
+     * Whether the joined server forces {@code setting}, so that nothing the player chooses can change it.
+     *
+     * <p>This is what a consuming mod greys its own control out on. It is deliberately the <em>same</em>
+     * predicate the resolver uses, so a control shown as locked is exactly a control whose value the resolver is
+     * taking from the server: a server that declares a setting enforced but states no value for it does not lock
+     * anything, and an enforced relay address that could not be dialled does not either.</p>
+     *
+     * <p>Never throws. Like every other read here it degrades to "not locked" when the capability view is not
+     * up yet, because this is called from a UI thread while a screen is being built.</p>
+     *
+     * @param setting the setting to test, may be {@code null}.
+     * @return whether the server has locked that setting to its own value.
+     */
+    public static boolean isLockedByServer(@Nullable SyncSetting setting) {
+        if (setting == null) {
+            return false;
+        }
+        try {
+            ServerSyncPolicy policy = advertisedPolicy();
+            return locks(policy, setting, advertisedValue(policy, setting));
+        } catch (Exception e) {
+            // A screen being built mid-handshake must not crash over decoration; unlocked is the safe read.
+            return false;
+        }
+    }
+
+    /**
+     * Every setting the joined server currently locks - the set form of {@link #isLockedByServer}, for a UI that
+     * would otherwise ask three times while the policy could change underneath it.
+     *
+     * @return the locked settings, never {@code null}; empty on a server that enforces nothing.
+     */
+    public static Set<SyncSetting> lockedByServer() {
+        try {
+            ServerSyncPolicy policy = advertisedPolicy();
+            EnumSet<SyncSetting> locked = EnumSet.noneOf(SyncSetting.class);
+            for (SyncSetting setting : SyncSetting.values()) {
+                if (locks(policy, setting, advertisedValue(policy, setting))) {
+                    locked.add(setting);
+                }
+            }
+            return Set.copyOf(locked);
+        } catch (Exception e) {
+            return Set.of();
+        }
+    }
+
     // ── The chain ───────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * The whole precedence chain, for one setting.
+     *
+     * <p>The advertised value is read exactly once, through {@link #advertisedValue}, and that single read is
+     * what both the enforcement check and rung two use. Reading it twice - or letting the caller pass its own
+     * accessor - is how a setting ends up locked to one value and resolved to another.</p>
+     *
+     * <p>The cast is safe by construction: {@link #advertisedValue} is the only mapping from a
+     * {@link SyncSetting} to a policy component, and every caller here passes the matching {@code T}.</p>
+     */
+    @SuppressWarnings("unchecked")
     private static <T> T resolve(
+            SyncSetting setting,
             Function<EunomiaConfig, @Nullable T> playerOverride,
-            Function<ServerSyncPolicy, @Nullable T> advertised,
             @Nullable T modDefault,
             T frameworkDefault) {
+        ServerSyncPolicy policy = advertisedPolicy();
+        T fromServer = (T) advertisedValue(policy, setting);
+        if (locks(policy, setting, fromServer)) {
+            // Rung zero: the server both has a value here and insists on it, so the player's override does not
+            // even get asked. Note that the override is not cleared - it applies again the moment they join a
+            // server that does not enforce this.
+            return fromServer;
+        }
         EunomiaConfig config = clientConfig();
         if (config != null) {
             T override = playerOverride.apply(config);
@@ -183,11 +311,34 @@ public final class EunomiaSyncSettings {
                 return override;
             }
         }
-        T fromServer = advertised.apply(advertisedPolicy());
         if (fromServer != null) {
             return fromServer;
         }
         return modDefault != null ? modDefault : frameworkDefault;
+    }
+
+    /**
+     * The one mapping from a setting to what the joined server advertised for it, or {@code null} for "the
+     * server said nothing usable". The address goes through {@link #validAdvertisedAddress}, so an enforced but
+     * malformed address locks nothing and falls through - a server with a typo in its config loses that one
+     * value, it does not get to pin every joining player to an address nobody can dial.
+     */
+    private static @Nullable Object advertisedValue(ServerSyncPolicy policy, SyncSetting setting) {
+        return switch (setting) {
+            case EXTERNAL_FALLBACK -> policy.enableExternalFallback();
+            case EXTERNAL_SERVER_ADDRESS -> validAdvertisedAddress(policy);
+            case PREFER_EXTERNAL_TRANSPORT -> policy.preferExternalTransport();
+        };
+    }
+
+    /**
+     * The single enforcement predicate, shared by the resolver and by the public {@link #isLockedByServer}.
+     * Both halves are necessary: enforcement is a modifier on a value, so a server that enforces a setting it
+     * has no opinion about locks nothing. If these two callers ever disagreed, a consuming mod would grey out a
+     * control the resolver is not in fact overriding.
+     */
+    private static boolean locks(ServerSyncPolicy policy, SyncSetting setting, @Nullable Object advertised) {
+        return advertised != null && policy.enforces(setting);
     }
 
     private static @Nullable EunomiaConfig clientConfig() {

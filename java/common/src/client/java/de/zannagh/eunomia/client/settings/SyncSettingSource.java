@@ -3,6 +3,8 @@ package de.zannagh.eunomia.client.settings;
 import de.zannagh.eunomia.Eunomia;
 import de.zannagh.eunomia.configuration.EunomiaConfig;
 import de.zannagh.eunomia.configuration.EunomiaSyncDefaults;
+import de.zannagh.eunomia.configuration.EunomiaSyncSettings;
+import de.zannagh.eunomia.configuration.SyncSetting;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import net.minecraft.network.chat.Component;
@@ -23,7 +25,18 @@ import net.minecraft.network.chat.Component;
  */
 public enum SyncSettingSource {
 
-    /** The player set this explicitly on the settings screen; it outranks everything, on every server. */
+    /**
+     * The joined server advertised this <em>and</em> declared it non-negotiable; nothing the player does on
+     * this server changes it.
+     *
+     * <p>A separate constant rather than a flag on {@link #SERVER} because the two render differently and must:
+     * "from server" and "locked by server" are the difference between a value a player can still override and
+     * one they cannot, and collapsing them would show a player a control they are free to change when they are
+     * not.</p>
+     */
+    SERVER_ENFORCED("serverEnforced"),
+
+    /** The player set this explicitly on the settings screen; it outranks everything bar an enforced value. */
     PLAYER("player"),
 
     /** The joined server advertised it in the capability handshake; it follows the player around. */
@@ -41,7 +54,11 @@ public enum SyncSettingSource {
         this.key = key;
     }
 
-    /** Whether this is a decision the player actually made (as opposed to an inherited value). */
+    /**
+     * Whether this is a decision the player actually made (as opposed to an inherited or imposed value).
+     * {@code false} for {@link #SERVER_ENFORCED} even when the player does have an override stored: the
+     * override is not what is in effect, so offering to reset it would be offering to change nothing.
+     */
     public boolean isPlayerOverride() {
         return this == PLAYER;
     }
@@ -53,6 +70,9 @@ public enum SyncSettingSource {
 
     /** Where the effective "Cloud Sync enabled" value is coming from right now. */
     public static SyncSettingSource forExternalFallback() {
+        if (EunomiaSyncSettings.isLockedByServer(SyncSetting.EXTERNAL_FALLBACK)) {
+            return SERVER_ENFORCED;
+        }
         if (config().enableExternalFallbackOverride() != null) {
             return PLAYER;
         }
@@ -64,6 +84,9 @@ public enum SyncSettingSource {
 
     /** Where the effective relay address is coming from right now. */
     public static SyncSettingSource forExternalServerAddress() {
+        if (EunomiaSyncSettings.isLockedByServer(SyncSetting.EXTERNAL_SERVER_ADDRESS)) {
+            return SERVER_ENFORCED;
+        }
         if (config().externalServerAddressOverride() != null) {
             return PLAYER;
         }
@@ -75,6 +98,9 @@ public enum SyncSettingSource {
 
     /** Where the effective "prefer the relay" value is coming from right now. */
     public static SyncSettingSource forPreferExternalTransport() {
+        if (EunomiaSyncSettings.isLockedByServer(SyncSetting.PREFER_EXTERNAL_TRANSPORT)) {
+            return SERVER_ENFORCED;
+        }
         if (config().preferExternalTransportOverride() != null) {
             return PLAYER;
         }

@@ -229,4 +229,32 @@ class EunomiaConfigTest {
         assertThat(restored.externalServerAddress()).isNull();
         assertThat(restored.hasExternalServerAddress()).isFalse();
     }
+
+    // ── Bounded seen-lists ──────────────────────────────────────────────────────────────────────
+
+    @Test
+    void announcedServersEvictTheOldestOnceTheCapIsReached() {
+        EunomiaConfig config = EunomiaConfig.withCurrentSchema();
+        for (int i = 0; i < 200; i++) {
+            assertThat(config.rememberAnnouncedSyncUnavailable("server" + i + ".example")).isTrue();
+        }
+
+        // Bounded, so an install that hops between hundreds of servers does not grow a config file forever.
+        assertThat(config.announcedSyncUnavailableServers).hasSize(128);
+        // Oldest-first: the price of the bound is one repeated card on a server not visited in a long time.
+        assertThat(config.hasAnnouncedSyncUnavailable("server0.example")).isFalse();
+        assertThat(config.hasAnnouncedSyncUnavailable("server199.example")).isTrue();
+    }
+
+    @Test
+    void announcedServersRoundTripThroughGsonAlongsideTheSeenRelayHosts() {
+        EunomiaConfig config = EunomiaConfig.withCurrentSchema();
+        config.rememberRelayHost("relay.example");
+        config.rememberAnnouncedSyncUnavailable("play.example:25565");
+
+        EunomiaConfig restored = GSON.fromJson(GSON.toJson(config), EunomiaConfig.class);
+
+        assertThat(restored.hasSeenRelayHost("relay.example")).isTrue();
+        assertThat(restored.hasAnnouncedSyncUnavailable("play.example:25565")).isTrue();
+    }
 }

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import de.zannagh.eunomia.configuration.ConfigurationProvider;
 import de.zannagh.eunomia.configuration.EunomiaServerConfig;
 import de.zannagh.eunomia.configuration.FileConfigurationProvider;
+import de.zannagh.eunomia.configuration.SyncSetting;
 import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.handshake.ClientHelloPayload;
 import de.zannagh.eunomia.networking.handshake.HandshakePackets;
@@ -211,6 +212,59 @@ class ServerSettingsExchangeSecurityTest {
         assertThat(advertised.enableExternalFallback()).isEqualTo(Boolean.TRUE);
         assertThat(advertised.externalServerAddress()).isEqualTo("https://relay.example");
         assertThat(advertised.preferExternalTransport()).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void anAdministratorCanLockTheSettingsForEveryoneAndTheLockIsAdvertised() throws Exception {
+        callerIsAdmin.set(true);
+
+        ServerSettingsPayload answer = write(ADMIN_ID, new ServerSettingsWritePayload(
+                20L, true, "https://relay.example", false, Boolean.TRUE));
+
+        assertThat(answer.status).isEqualTo(ServerSettingsStatus.APPLIED);
+        assertThat(answer.enforceSettings).isTrue();
+        assertThat(Files.readString(configDirectory.resolve("eunomia-server.json")))
+                .contains("enforceSettings");
+        // The point of the flag is what joining clients are told, so that is what is asserted: a lock
+        // that never reaches the handshake locks nothing on any client.
+        ServerSyncPolicy advertised = probe();
+        assertThat(advertised.enforces(SyncSetting.EXTERNAL_FALLBACK)).isTrue();
+        assertThat(advertised.enforces(SyncSetting.EXTERNAL_SERVER_ADDRESS)).isTrue();
+        // Not enforced: the write left preferExternalTransport at the framework default, but the write
+        // constructor still records it as an opinion, so this one is enforced too. Asserted explicitly
+        // rather than left implied, because "enforce everything I have an opinion about" is the rule.
+        assertThat(advertised.enforces(SyncSetting.PREFER_EXTERNAL_TRANSPORT)).isTrue();
+    }
+
+    @Test
+    void aWriteThatSaysNothingAboutEnforcementLeavesTheLockStanding() {
+        callerIsAdmin.set(true);
+        write(ADMIN_ID, new ServerSettingsWritePayload(21L, true, "https://relay.example", false,
+                Boolean.TRUE));
+
+        // Exactly what a client built before enforcement existed puts on the wire: no `enforce` key at
+        // all. The handler rebuilds the whole config from the payload, so without the "absent means
+        // leave it alone" rule this write would silently unlock the server for everyone on it.
+        ServerSettingsPayload answer = write(ADMIN_ID, new ServerSettingsWritePayload(
+                22L, true, "https://relay.example", true));
+
+        assertThat(answer.status).isEqualTo(ServerSettingsStatus.APPLIED);
+        assertThat(answer.enforceSettings).isTrue();
+        assertThat(provider.getValue().enforcesSettings()).isTrue();
+        // ...while the field the write did carry was applied, so this is not "the write was ignored".
+        assertThat(provider.getValue().preferExternalTransport()).isTrue();
+    }
+
+    @Test
+    void aNonAdministratorCannotLockTheSettings() {
+        callerIsAdmin.set(false);
+
+        ServerSettingsPayload answer = write(INTRUDER_ID, new ServerSettingsWritePayload(
+                23L, true, "https://evil.example", true, Boolean.TRUE));
+
+        assertThat(answer.status).isEqualTo(ServerSettingsStatus.DENIED);
+        assertThat(provider.getValue().enforcesSettings()).isFalse();
+        assertThat(probe().enforces(SyncSetting.EXTERNAL_FALLBACK)).isFalse();
     }
 
     private ServerSettingsPayload request(UUID sender, long correlationId) {

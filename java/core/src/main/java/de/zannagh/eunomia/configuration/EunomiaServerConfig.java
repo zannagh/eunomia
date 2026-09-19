@@ -4,7 +4,9 @@ import de.zannagh.eunomia.common.SemanticVersion;
 import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import org.jspecify.annotations.Nullable;
 
+import java.util.EnumSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * The server-side Eunomia configuration, persisted to {@code config/eunomia-server.json}. It is the operator's
@@ -61,6 +63,23 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
     public @Nullable Boolean preferExternalTransport;
 
     /**
+     * Whether the opinions above are <em>enforced</em> rather than merely advertised: when {@code true}, every
+     * setting this server actually states an opinion about is forced on joining clients and outranks even the
+     * player's own override. {@code null} or {@code false} keeps the historical, advisory behaviour exactly.
+     * <p>
+     * One boolean rather than a per-setting list, because that is the decision an operator actually makes - "my
+     * server's relay rules are not negotiable" - and a per-setting screen would be three ways to express one
+     * intent. It expands to a per-setting {@link SyncSetting} set at the {@link #toSyncPolicy()} boundary (see
+     * {@link #enforcedSettings()}), so the wire and the client stay per-setting and finer granularity can be
+     * exposed later without a protocol break.
+     * <p>
+     * Boxed like the opinions, and for a subtler reason: a primitive would make "absent" and "explicitly not
+     * enforced" the same document, and the moment enforcement gains a schema migration that difference is what
+     * tells an untouched file from a deliberate one.
+     */
+    public @Nullable Boolean enforceSettings;
+
+    /**
      * The schema this document was written with, persisted so migrations can be detected at all.
      * <p>
      * Deliberately <em>not</em> initialised by the no-argument constructor, exactly as on the client config:
@@ -90,14 +109,24 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
                 Boolean.valueOf(preferExternalTransport));
     }
 
-    /** The opinion constructor: {@code null} for any knob the operator has not expressed. */
+    /** The opinion constructor: {@code null} for any knob the operator has not expressed. Advisory. */
     public EunomiaServerConfig(
             @Nullable Boolean enableExternalFallback,
             @Nullable String externalServerAddress,
             @Nullable Boolean preferExternalTransport) {
+        this(enableExternalFallback, externalServerAddress, preferExternalTransport, null);
+    }
+
+    /** The opinion constructor, with the operator's enforcement decision. */
+    public EunomiaServerConfig(
+            @Nullable Boolean enableExternalFallback,
+            @Nullable String externalServerAddress,
+            @Nullable Boolean preferExternalTransport,
+            @Nullable Boolean enforceSettings) {
         this.enableExternalFallback = enableExternalFallback;
         this.externalServerAddress = externalServerAddress;
         this.preferExternalTransport = preferExternalTransport;
+        this.enforceSettings = enforceSettings;
         this.schemaVersion = SCHEMA_1_1_0.toString();
     }
 
@@ -121,6 +150,41 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
     /** The operator's explicit "prefer the relay" decision, or {@code null} when they never expressed one. */
     public @Nullable Boolean preferExternalTransportOpinion() {
         return preferExternalTransport;
+    }
+
+    /** Whether this operator enforces their opinions. Absent reads as {@code false} - advisory, as before. */
+    public boolean enforcesSettings() {
+        return Boolean.TRUE.equals(enforceSettings);
+    }
+
+    /**
+     * The operator's single {@code enforceSettings} flag expanded to the per-setting set advertised over the
+     * handshake: "enforce everything I actually have an opinion about".
+     * <p>
+     * The opinion test is what keeps the flag honest. Enforcement is a modifier on a value, so a server that
+     * enforces but says nothing about, say, the relay address must not claim to lock the address - the client
+     * would find nothing to lock it to, and a locked-looking control with an inherited value is worse than an
+     * unlocked one. The address additionally has to be non-blank, because a blank address is dropped to "no
+     * opinion" by {@link ServerSyncPolicy} itself and an enforcement entry that outlives its value is exactly
+     * the mismatch this method exists to prevent.
+     *
+     * @return the settings to enforce, never {@code null}; empty whenever the flag is off or absent.
+     */
+    public Set<SyncSetting> enforcedSettings() {
+        if (!enforcesSettings()) {
+            return Set.of();
+        }
+        EnumSet<SyncSetting> enforced = EnumSet.noneOf(SyncSetting.class);
+        if (enableExternalFallback != null) {
+            enforced.add(SyncSetting.EXTERNAL_FALLBACK);
+        }
+        if (externalServerAddress != null && !externalServerAddress.isBlank()) {
+            enforced.add(SyncSetting.EXTERNAL_SERVER_ADDRESS);
+        }
+        if (preferExternalTransport != null) {
+            enforced.add(SyncSetting.PREFER_EXTERNAL_TRANSPORT);
+        }
+        return Set.copyOf(enforced);
     }
 
     // ── Effective view (for rendering and for the admin exchange) ───────────────────────────────
@@ -165,7 +229,8 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
      * than an empty one that would later fail a reachability probe.
      */
     public ServerSyncPolicy toSyncPolicy() {
-        return new ServerSyncPolicy(enableExternalFallback, externalServerAddress, preferExternalTransport);
+        return new ServerSyncPolicy(
+                enableExternalFallback, externalServerAddress, preferExternalTransport, enforcedSettings());
     }
 
     @Override
@@ -178,6 +243,7 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
         this.enableExternalFallback = newValue.enableExternalFallback;
         this.externalServerAddress = newValue.externalServerAddress;
         this.preferExternalTransport = newValue.preferExternalTransport;
+        this.enforceSettings = newValue.enforceSettings;
         this.schemaVersion = newValue.schemaVersion;
     }
 
@@ -220,13 +286,22 @@ public class EunomiaServerConfig implements ConfigurationItem<EunomiaServerConfi
      * for everyone; guessing "no opinion" hands the choice to the consuming mod, which is the rung the operator
      * would have had to override deliberately anyway. A blank address - which never carried information in
      * 1.0.0 either - also collapses to "no opinion".
+     * <p>
+     * <strong>This is why the schema must not be bumped for a new key.</strong> The collapse above is only sound
+     * for 1.0.0 documents, where the defaults were materialised on creation. Run it over a 1.1.0 document and a
+     * deliberate {@code enableExternalFallback: false} - which happens to equal the framework default - is erased
+     * on load, silently turning an enforced "Cloud Sync is off here" back into "no opinion". A new key that is
+     * null-tolerant (as {@code enforceSettings} is) needs no migration and must not get one.
      */
     @Override
     public EunomiaServerConfig migrateFrom(EunomiaServerConfig old) {
         return new EunomiaServerConfig(
                 opinionOrNone(old.enableExternalFallback, EunomiaDefaults.DEFAULT_ENABLE_EXTERNAL_FALLBACK),
                 addressOpinionOrNone(old.externalServerAddress),
-                opinionOrNone(old.preferExternalTransport, EunomiaDefaults.DEFAULT_PREFER_EXTERNAL_TRANSPORT));
+                opinionOrNone(old.preferExternalTransport, EunomiaDefaults.DEFAULT_PREFER_EXTERNAL_TRANSPORT),
+                // Carried over verbatim: 1.0.0 had no enforcement key, so this is null for every document this
+                // migration can legitimately see, and collapsing it would be a way to lose a hand-added flag.
+                old.enforceSettings);
     }
 
     /** A legacy boolean that merely repeats the framework default carries no information; drop it. */

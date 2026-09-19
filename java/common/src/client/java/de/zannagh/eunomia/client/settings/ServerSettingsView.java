@@ -15,6 +15,9 @@ import de.zannagh.eunomia.networking.admin.ServerSettingsStatus;
  * @param enableExternalFallback  the server's current external-fallback switch.
  * @param externalServerAddress   the server's current relay address, normalised; blank means "no relay".
  * @param preferExternalTransport whether the server wants clients on the relay regardless.
+ * @param enforceSettings         whether the server forces these values on every client rather than merely
+ *                                advertising them. A value, not a hint: unlike {@link #editable()} it is
+ *                                what the server is actually applying to everyone on it.
  * @param editable                whether the server said this player may change these values.
  * @param status                  how the exchange that produced this view concluded.
  * @param detail                  a human-readable refusal reason, or {@code null}.
@@ -24,6 +27,7 @@ public record ServerSettingsView(
         boolean enableExternalFallback,
         String externalServerAddress,
         boolean preferExternalTransport,
+        boolean enforceSettings,
         boolean editable,
         ServerSettingsStatus status,
         String detail) {
@@ -34,6 +38,7 @@ public record ServerSettingsView(
                 payload.enableExternalFallback,
                 payload.externalServerAddress == null ? "" : payload.externalServerAddress,
                 payload.preferExternalTransport,
+                payload.enforceSettings,
                 payload.editable,
                 payload.statusOrOk(),
                 payload.detail);
@@ -45,7 +50,7 @@ public record ServerSettingsView(
      * screen rendering this shows something inert rather than inviting a write that cannot land.
      */
     static ServerSettingsView unavailable() {
-        return new ServerSettingsView(false, "", false, false, ServerSettingsStatus.UNAVAILABLE,
+        return new ServerSettingsView(false, "", false, false, false, ServerSettingsStatus.UNAVAILABLE,
                 "The server did not answer - it may not be running eunomia.");
     }
 

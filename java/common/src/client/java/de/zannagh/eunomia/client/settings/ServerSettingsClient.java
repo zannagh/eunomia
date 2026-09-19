@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  *     render(view.enableExternalFallback(), view.externalServerAddress(), readOnly);
  * });
  *
- * ServerSettingsClient.submit(true, "https://relay.example", false, result -> {
+ * ServerSettingsClient.submit(true, "https://relay.example", false, false, result -> {
  *     if (result.applied()) {
  *         toast("Saved");
  *     } else {
@@ -102,6 +102,9 @@ public final class ServerSettingsClient {
      * @param enableExternalFallback  the requested external-fallback switch.
      * @param externalServerAddress   the requested relay address; blank clears it. Validated server-side.
      * @param preferExternalTransport the requested "prefer the relay" switch.
+     * @param enforceSettings         whether the server should force these values on every client. Sent
+     *                                explicitly rather than left absent, because a screen that has the
+     *                                control has an opinion - and an absent flag means "leave it alone".
      * @param onResult                invoked exactly once with the outcome: {@code applied()} on success,
      *                                otherwise a refusal carrying a {@code detail()} worth showing.
      */
@@ -109,11 +112,12 @@ public final class ServerSettingsClient {
             boolean enableExternalFallback,
             String externalServerAddress,
             boolean preferExternalTransport,
+            boolean enforceSettings,
             Consumer<ServerSettingsView> onResult) {
         long id = begin(onResult);
         CommunicationManager.sendToServer(AdminPackets.SERVER_SETTINGS_WRITE,
                 new ServerSettingsWritePayload(id, enableExternalFallback, externalServerAddress,
-                        preferExternalTransport),
+                        preferExternalTransport, Boolean.valueOf(enforceSettings)),
                 SendOptions.ALWAYS);
     }
 

@@ -93,7 +93,15 @@ over an immutable `ClientSyncState` snapshot. Both are suppressed unless **all**
 - this is a real multiplayer connection — never in singleplayer, never on a LAN world;
 - the relay is **not** already usable (fallback enabled *and* an address configured). Telling a player to
   "enable Cloud Sync" when they already did would be insulting; if that relay then turns out to be down, the
-  next toast covers it with accurate copy.
+  next toast covers it with accurate copy;
+- **this server has not been announced before.** The predicate above is permanent for a server that simply
+  does not run Eunomia, so on its own it fires on every join, forever, at a player who has decided not to use
+  Cloud Sync. The second gate is
+  `EunomiaSyncSettings.recordSyncUnavailableAnnouncement(serverAddress)`, an atomic test-and-set over
+  `EunomiaConfig.announcedSyncUnavailableServers` that persists immediately. The key is the joined server's
+  address — the same value the relay partitions data by — because that is what the message is *about*. The
+  list is capped at 128 entries and evicts oldest-first; `forgetAnnouncedSyncUnavailableServers()` clears it,
+  so a player can be told once more.
 
 **Cloud sync unreachable** (`shouldWarnRelayUnreachable`) needs:
 
@@ -120,6 +128,41 @@ test-and-set. It needs:
 
 Hosts, not URLs, are recorded: an operator who appends a path, changes the port or moves from `http` to
 `https` has not moved anyone's data to a new party.
+
+### Saying it in your own words
+
+Eunomia's copy for the first toast can only talk about Eunomia, which is a library the player probably does
+not know they have. The mod they *did* install is the one going unsynchronised, so register your own wording:
+
+```java
+EunomiaClient.configure()
+        .syncUnavailableNotice("armorhider",
+                Component.translatable("armorhider.toast.sync.unavailable"))
+        .apply();
+```
+
+or, equivalently, straight against the registry from your client initializer:
+
+```java
+SyncUnavailableNotices.register("armorhider",
+        Component.translatable("armorhider.toast.sync.unavailable"));
+```
+
+Both take an optional title as well; leaving it out keeps Eunomia's generic headline, which is usually right —
+the situation is the same whoever reports it and only the advice underneath is mod-specific.
+
+This is a **registry keyed by mod id, not a single settable slot**: two mods embedding Eunomia in one pack
+would otherwise fight over one field and the winner would be whichever initialised last. Instead:
+
+- with no registration, Eunomia raises its own generic card, as it always has;
+- with one or more, Eunomia raises **one card per registration** and **not** its generic one;
+- each card gets its own `ToastId`, derived from the mod id, so the cards stack instead of replacing one
+  another;
+- cards are ordered by mod id, so the same set of mods produces the same screen every launch;
+- re-registering the same id replaces that entry, so calling it from an initializer that runs twice is safe.
+
+Eunomia ships no lang files for consumer text — the `Component` is resolved in your namespace, as everywhere
+else in this API.
 
 ### Why no two of them can fire together
 

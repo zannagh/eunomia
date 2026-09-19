@@ -28,7 +28,9 @@ import java.util.Objects;
  * modified or not.</p>
  *
  * <p>Every accepted and every refused write is logged with the acting player. An operator redirecting where
- * all their players' data is sent is worth an audit line, and so is someone trying to.</p>
+ * all their players' data is sent is worth an audit line, and so is someone trying to - and so, especially,
+ * is an operator locking these settings for every player on the server, which is why the enforcement flag
+ * appears in both lines.</p>
  *
  * @since 0.3.0
  */
@@ -80,9 +82,9 @@ public final class ServerSettingsExchange {
     private void handleWrite(ServerSettingsWritePayload write, ServerContext context) {
         if (!isAdministrator(context)) {
             LOGGER.warn("Refused a eunomia Cloud Sync settings write from {} ({}): not an administrator "
-                            + "(requested fallback={}, address='{}', prefer={})",
+                            + "(requested fallback={}, address='{}', prefer={}, enforce={})",
                     context.senderName(), context.senderId(), write.enableExternalFallback,
-                    write.externalServerAddress, write.preferExternalTransport);
+                    write.externalServerAddress, write.preferExternalTransport, write.enforce);
             refuse(write.correlationId, context, false, ServerSettingsStatus.DENIED, DENIED_DETAIL);
             return;
         }
@@ -102,14 +104,23 @@ public final class ServerSettingsExchange {
         apply(write, context, stored);
     }
 
-    /** Persists the validated write and answers with the configuration as it now stands. */
+    /**
+     * Persists the validated write and answers with the configuration as it now stands.
+     *
+     * <p>The configuration is rebuilt from the payload rather than mutated, so every field the payload does
+     * not carry would be dropped. That is why enforcement is resolved against the stored value first: a
+     * write from a client that has no enforcement control - an older one, or a hand-rolled packet - says
+     * {@code null} and must leave the operator's lock exactly as it found it, not quietly lift it.</p>
+     */
     private void apply(ServerSettingsWritePayload write, ServerContext context, String stored) {
+        Boolean enforce = write.enforce == null ? access.current().enforceSettings : write.enforce;
         access.persist(new EunomiaServerConfig(
-                write.enableExternalFallback, stored, write.preferExternalTransport));
+                Boolean.valueOf(write.enableExternalFallback), stored,
+                Boolean.valueOf(write.preferExternalTransport), enforce));
         LOGGER.info("Accepted a eunomia Cloud Sync settings write from administrator {} ({}): "
-                        + "fallback={}, address='{}', prefer={}",
+                        + "fallback={}, address='{}', prefer={}, enforce={}",
                 context.senderName(), context.senderId(), write.enableExternalFallback, stored,
-                write.preferExternalTransport);
+                write.preferExternalTransport, enforce);
         context.reply(AdminPackets.SERVER_SETTINGS, ServerSettingsPayload.of(
                 write.correlationId, access.current(), true, ServerSettingsStatus.APPLIED, null));
     }

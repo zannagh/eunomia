@@ -12,7 +12,6 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 // The runtime guard for the "This Server" half of EunomiaSettingsScreen - the admin block that shows
@@ -38,6 +37,8 @@ final class ServerSectionSmoke {
     private static final String PREFER_CAPTION = "Server: Prefer Relay";
 
     private static final String ADDRESS_CAPTION = "Server: Relay Address";
+
+    private static final String ENFORCE_CAPTION = "Server: Enforce";
 
     // The four captions a provenance/reset button can carry, and the one an untouched server must
     // produce. See assertPlayerRowsFallThrough.
@@ -121,8 +122,8 @@ final class ServerSectionSmoke {
         context.waitTicks(3);
     }
 
-    // The section is six widgets; all six have to be reachable from the open screen, because a widget
-    // that is built but never published is exactly the defect a screenshot cannot see.
+    // Every widget of the section has to be reachable from the open screen, because a widget that is
+    // built but never published is exactly the defect a screenshot cannot see.
     private static void requireSection(ClientGameTestContext context) {
         List<String> labels = SmokeUi.labels(context);
         if (!labels.contains(HEADER)) {
@@ -133,6 +134,7 @@ final class ServerSectionSmoke {
         SmokeUi.require(context, "the server Cloud Sync toggle", ServerSectionSmoke::isFallback);
         SmokeUi.require(context, "the server Prefer Relay toggle", ServerSectionSmoke::isPrefer);
         SmokeUi.require(context, "the server relay address field", ADDRESS_CAPTION::equals);
+        SmokeUi.require(context, "the server Enforce toggle", ServerSectionSmoke::isEnforce);
         SmokeUi.require(context, "the Save to Server button", SAVE_CAPTION::equals);
         requireStatusWidget(context);
     }
@@ -200,19 +202,17 @@ final class ServerSectionSmoke {
                 SmokeUi.require(context, "the server Cloud Sync toggle", ServerSectionSmoke::isFallback));
         requireActive(context, "the server Prefer Relay toggle",
                 SmokeUi.require(context, "the server Prefer Relay toggle", ServerSectionSmoke::isPrefer));
+        requireActive(context, "the server Enforce toggle",
+                SmokeUi.require(context, "the server Enforce toggle", ServerSectionSmoke::isEnforce));
         requireActive(context, "the Save to Server button",
                 SmokeUi.require(context, "the Save to Server button", SAVE_CAPTION::equals));
         AbstractWidget address = SmokeUi.require(context, "the server relay address field",
                 ADDRESS_CAPTION::equals);
         SmokeUi.assertTextVisible(context, "the server relay address field", address);
-        Optional<Boolean> editable = SmokeUi.editableFlag(address);
-        if (editable.isEmpty()) {
-            // Not a failure: EditBox's editable flag is a private field whose name is not part of any
-            // contract, and losing the whole variant over a rename would be worse than saying so.
-            Eunomia.LOGGER.warn("[smoke/ui] could not read the editable flag off {} on this version; "
-                    + "the address field's enabled state is unasserted here",
-                    address.getClass().getName());
-        } else if (!editable.get()) {
+        // Read through canConsumeInput() rather than through a reflective field lookup: the old lookup
+        // answered "could not tell" on a renamed field and this assertion then passed without asserting
+        // anything. There is no version on which this one silently opts out.
+        if (!SmokeUi.acceptsTyping(context, address)) {
             throw new AssertionError("The server relay address field is not editable for an administrator");
         }
     }
@@ -262,6 +262,10 @@ final class ServerSectionSmoke {
 
     private static boolean isPrefer(String message) {
         return message.startsWith(PREFER_CAPTION + ":");
+    }
+
+    private static boolean isEnforce(String message) {
+        return message.startsWith(ENFORCE_CAPTION + ":");
     }
 }
 //?}

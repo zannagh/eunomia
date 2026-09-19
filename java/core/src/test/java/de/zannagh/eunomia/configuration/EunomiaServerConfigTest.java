@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class EunomiaServerConfigTest {
@@ -140,5 +142,110 @@ class EunomiaServerConfigTest {
 
         assertThat(config.shouldMigrate()).isFalse();
         assertThat(config.ensureSchemaFrom(config)).isSameAs(config);
+    }
+
+    // ── Enforcement: one operator flag, expanded to a per-setting set ──────────────────────────
+
+    @Test
+    void anUntouchedServerEnforcesNothing() {
+        assertThat(new EunomiaServerConfig().enforcesSettings()).isFalse();
+        assertThat(new EunomiaServerConfig().enforcedSettings()).isEmpty();
+        assertThat(GSON.fromJson("{}", EunomiaServerConfig.class).enforcedSettings()).isEmpty();
+    }
+
+    @Test
+    void theSingleFlagExpandsToEverySettingTheServerActuallyStates() {
+        EunomiaServerConfig config =
+                new EunomiaServerConfig(false, "https://relay.example", true, true);
+
+        assertThat(config.enforcedSettings()).containsExactlyInAnyOrder(
+                SyncSetting.EXTERNAL_FALLBACK,
+                SyncSetting.EXTERNAL_SERVER_ADDRESS,
+                SyncSetting.PREFER_EXTERNAL_TRANSPORT);
+        assertThat(config.toSyncPolicy().enforced()).isEqualTo(config.enforcedSettings());
+    }
+
+    /**
+     * The half of the expansion that keeps the flag honest: enforcement is a modifier on a value, so a setting
+     * the operator never expressed cannot be enforced. Claiming otherwise would have every enforcing server
+     * lock all three settings, including the ones it has nothing to say about.
+     */
+    @Test
+    void theFlagSkipsSettingsThisServerHasNoOpinionAbout() {
+        EunomiaServerConfig config = GSON.fromJson(
+                "{\"schemaVersion\":\"1.1.0\",\"enableExternalFallback\":false,\"enforceSettings\":true}",
+                EunomiaServerConfig.class);
+
+        assertThat(config.enforcedSettings()).containsExactly(SyncSetting.EXTERNAL_FALLBACK);
+    }
+
+    /**
+     * A blank address is dropped to "no opinion" by {@code ServerSyncPolicy} itself, so enforcing it would
+     * advertise a lock whose value never arrives - exactly the mismatch a client cannot recover from.
+     */
+    @Test
+    void theFlagSkipsABlankAddressBecauseTheValueIsDroppedOnTheWireAnyway() {
+        EunomiaServerConfig config = new EunomiaServerConfig(null, "   ", null, true);
+
+        assertThat(config.enforcedSettings()).isEmpty();
+        assertThat(config.toSyncPolicy().externalServerAddress()).isNull();
+        assertThat(config.toSyncPolicy().isEmpty()).isTrue();
+    }
+
+    @Test
+    void anExplicitlyDisabledFlagIsAdvisoryJustLikeAnAbsentOne() {
+        EunomiaServerConfig config =
+                new EunomiaServerConfig(true, "https://relay.example", true, false);
+
+        assertThat(config.enforcedSettings()).isEmpty();
+        assertThat(config.toSyncPolicy().enforced()).isEqualTo(Set.of());
+        assertThat(config.toSyncPolicy().isEmpty()).isFalse();
+    }
+
+    @Test
+    void theEnforcementFlagRoundTripsThroughGsonAndSetValue() {
+        EunomiaServerConfig original = new EunomiaServerConfig(true, "https://relay.example", true, true);
+
+        EunomiaServerConfig restored = GSON.fromJson(GSON.toJson(original), EunomiaServerConfig.class);
+        assertThat(restored.enforcesSettings()).isTrue();
+
+        EunomiaServerConfig target = new EunomiaServerConfig();
+        target.setValue(restored);
+        assertThat(target.enforcesSettings()).isTrue();
+    }
+
+    /**
+     * The trap guard. {@link EunomiaServerConfig#migrateFrom} collapses any value equal to the framework
+     * default back to "no opinion", which is only sound for 1.0.0 documents where the defaults were written out
+     * on creation. If the schema were ever bumped for the enforcement key, this document would be migrated on
+     * load and a deliberate {@code enableExternalFallback: false} - an admin saying "Cloud Sync is off here",
+     * which happens to equal the framework default - would be erased and the lock would silently evaporate.
+     */
+    @Test
+    void aDeliberateFalseOnACurrentDocumentSurvivesALoadAndStaysEnforceable() {
+        EunomiaServerConfig loaded = GSON.fromJson(
+                "{\"schemaVersion\":\"1.1.0\",\"enableExternalFallback\":false,\"enforceSettings\":true}",
+                EunomiaServerConfig.class);
+
+        assertThat(loaded.shouldMigrate()).isFalse();
+
+        EunomiaServerConfig afterLoad = loaded.ensureSchemaFrom(loaded);
+
+        assertThat(afterLoad.externalFallbackOpinion()).isFalse();
+        assertThat(afterLoad.enforcedSettings()).containsExactly(SyncSetting.EXTERNAL_FALLBACK);
+        assertThat(afterLoad.toSyncPolicy().enforces(SyncSetting.EXTERNAL_FALLBACK)).isTrue();
+    }
+
+    /** The enforcement key has no 1.0.0 counterpart, so a legacy document simply carries none. */
+    @Test
+    void aLegacyDocumentMigratesWithoutInventingEnforcement() {
+        EunomiaServerConfig loaded = GSON.fromJson(
+                "{\"enableExternalFallback\":true,\"externalServerAddress\":\"https://relay.example\"}",
+                EunomiaServerConfig.class);
+
+        EunomiaServerConfig migrated = loaded.ensureSchemaFrom(loaded);
+
+        assertThat(migrated.enforcesSettings()).isFalse();
+        assertThat(migrated.toSyncPolicy().enforced()).isEmpty();
     }
 }
