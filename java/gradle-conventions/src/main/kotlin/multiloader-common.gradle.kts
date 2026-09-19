@@ -68,6 +68,16 @@ tasks.jar {
     includeLicense(base.archivesName.get())
 }
 
+// The Mojang-mapped counterpart of `jar`, published under the `dev` classifier - see the publication
+// below for why. Built from the source-set outputs directly, so loom's remapper never touches it.
+tasks.register<Jar>("devJar") {
+    archiveClassifier.set("dev")
+    from(sourceSets["main"].output)
+    sourceSets.findByName("client")?.let { from(it.output) }
+    includeLicense(base.archivesName.get())
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.test {
     useJUnitPlatform()
     testLogging {
@@ -111,6 +121,16 @@ if (loader == "common") {
                 create<MavenPublication>("maven") {
                     artifactId = "eunomia-common"
                     from(components["java"])
+                    // The main artifact is whatever loom produced. On the remapped (non-deobf) variants
+                    // that is the INTERMEDIARY jar - net.minecraft.class_2960 rather than the Mojang name -
+                    // which a sibling mod cannot compile against. It fails only in the consumer, so
+                    // eunomia's build stays green while every MC 1.x consumer breaks; the deobfuscated
+                    // 26.x variants are unobfuscated anyway, which is why only those three were usable.
+                    //
+                    // devJar carries the compiled classes straight out of the source sets, before loom
+                    // remaps anything, so it is Mojang-mapped on every variant. Consumers depend on the
+                    // `dev` classifier and get one consistent mapping across the whole matrix.
+                    artifact(tasks.named("devJar"))
                 }
             }
         }
