@@ -1,14 +1,19 @@
 # Publishes eunomia's maven artifacts to GitHub Packages so a sibling mod can consume them:
 #   - de.zannagh.eunomia:eunomia-core   (the MC-free networking/framework library)
 #   - de.zannagh.eunomia:eunomia-paper  (the shaded Paper plugin)
-#   - de.zannagh.eunomia:eunomia-common (the active stonecutter variant's common jar)
+#   - de.zannagh.eunomia:eunomia-common (one jar per game version, as `<semVer>+<display_version>`)
 #
 # This workflow publishes the Maven artifacts only. Consumer-facing mod uploads to Modrinth and
 # CurseForge (Fabric/NeoForge) live in publish-platforms.yml, driven by a manual GitHub release.
 #
-# NOTE: `publish` covers the active common variant only. To publish the full per-game-version common
-# matrix, switch the active variant (`./gradlew "Set active project to <variant>"`) and re-run, or add
-# a matrix over the stonecutter variants here later.
+# eunomia-common is game-version-specific and only the ACTIVE stonecutter variant registers a
+# publication, so the whole matrix is covered by switching the active variant once per game version
+# (the `publish-common` job below). Before that job existed only the default active variant (26.2) was
+# ever published, which left a consumer unable to resolve eunomia-common on any other game version.
+#
+# The matrix runs the FABRIC variant of each game version only: the common jar is loader-agnostic, and
+# fabric-X / neoforge-X share a display_version, so publishing both would just write the same
+# coordinate twice. A NeoForge consumer resolves the fabric-built jar and compiles against it fine.
 
 name: Publish (Maven)
 
@@ -47,7 +52,7 @@ jobs:
         uses: zannagh/versionizer/calculate-version@v1
 
   publish:
-    name: Publish to GitHub Packages
+    name: Publish libraries (core, paper, conventions)
     needs: runner-and-version
     runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
     permissions:
@@ -69,8 +74,10 @@ jobs:
           gradlew-path: "./java/gradlew"
 
       # The eunomia-publish convention reads GITHUB_ACTOR/GITHUB_TOKEN for the GitHub Packages repo.
+      # Explicit project paths: a bare `publish` would also publish whichever common variant happens
+      # to be active, duplicating a coordinate the publish-common matrix owns.
       - name: Publish libraries
-        run: ./gradlew publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./gradlew :core:publish :paper:publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,6 +86,59 @@ jobs:
       # consumer can apply the same setup as a resolved plugin instead of copying buildSrc.
       - name: Publish convention plugins
         run: ./gradlew -p gradle-conventions publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-common:
+    name: Publish eunomia-common (${{ matrix.variant }})
+    needs: runner-and-version
+    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One game version's failure must not hide the other ten.
+      fail-fast: false
+      # Each variant is a full stonecutter switch plus a compile; three at a time keeps the peak off a
+      # self-hosted runner without serialising the whole matrix.
+      max-parallel: 3
+      matrix:
+        # One entry per display_version (see stonecutter.properties.toml). Fabric only - see header.
+        variant:
+          - fabric-1.20.1
+          - fabric-1.21.1
+          - fabric-1.21.2
+          - fabric-1.21.3
+          - fabric-1.21.4
+          - fabric-1.21.8
+          - fabric-1.21.10
+          - fabric-1.21.11
+          - fabric-26.1.2
+          - fabric-26.2
+          - fabric-26.3
+    defaults:
+      run:
+        shell: bash
+        working-directory: java
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Gradle Environment
+        uses: zannagh/versionizer/setup-gradle-env@v1
+        with:
+          gradlew-path: "./java/gradlew"
+
+      # Stonecutter rewrites the sources in place, so the switch must be its own invocation - the
+      # publish below has to configure against the already-switched tree.
+      - name: Set active variant
+        run: ./gradlew "Set active project to ${{ matrix.variant }}"
+
+      - name: Publish eunomia-common
+        run: ./gradlew :common:${{ matrix.variant }}:publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
