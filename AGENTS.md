@@ -87,6 +87,22 @@ Worth knowing, because it is why the rule above is strict rather than advisory:
 - The dashboard does show the running relay version (top bar of `MainLayout`, every page), but nothing
   compares it to anything. The operator must already know which mod version they need.
 
+### We should fix this (future work)
+
+The three points above are a product gap, not just a documentation one. None of them is urgent, none
+is scheduled, and none should block a change — but if you are already in this area, they are worth
+doing:
+
+- **Put the served API versions in `/health`.** It returns a bare `"ok"` today. A version there makes
+  a mismatch detectable by anything, including a monitoring check.
+- **Raise a toast on the 4001 close.** `SyncDiagnosticToasts.relayUnreachable` already exists and
+  already fires for probe failure and socket-never-opened; the unsupported-version close is the one
+  path that stays silent, which is exactly the path an operator most needs to see.
+- **Flag the mismatch in the dashboard.** It renders the relay's own version but compares it to
+  nothing, so the operator has to already know which mod version they need.
+
+Until then, the rule at the top of this file is the only thing preventing a silent sync outage.
+
 Unknown JSON fields are ignored on both sides (System.Text.Json and Gson defaults, pinned by
 `ServerHelloPayloadCompatibilityTest`). Additive changes are therefore usually safe; renames, removals
 and type changes are not.
