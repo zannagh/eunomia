@@ -4,7 +4,6 @@
   "compatibilityLevel": "JAVA_17",
   "plugin": "de.zannagh.eunomia.EunomiaMixinPlugin",
   "mixins": [
-    "networking.ServerLoginMixin",
     "networking.ServerPlayNetworkHandlerMixin",
     "networking.PlayerListMixin",
     "networking.MinecraftServerMixin"
