@@ -43,6 +43,12 @@ public abstract class ServerGamePacketListenerMixin extends ServerCommonPacketLi
         // It is ours: stop vanilla from treating it as an unknown payload, then run the handler on
         // the server thread so it can safely touch world/server state.
         callbackInfo.cancel();
+        if (eunomiaPayload.data() == null) {
+            // The codec could not decode these bytes and already logged why (an older client speaking the
+            // pre-Eunomia framing of this channel, most likely). Cancelling but not dispatching drops the
+            // packet; throwing here - or letting the codec throw - would disconnect the sender instead.
+            return;
+        }
         String channelKey = eunomiaPayload.type().id().toString();
         ServerPlayer sender = getPlayer();
         server.execute(() -> CommunicationManager.dispatchServerbound(

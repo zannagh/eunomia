@@ -10,7 +10,7 @@ import de.zannagh.eunomia.networking.handshake.ServerSyncPolicy;
 import de.zannagh.eunomia.networking.packets.ClientContext;
 import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.packets.ServerContext;
-import de.zannagh.eunomia.networking.serialization.PayloadCodec;
+import de.zannagh.eunomia.networking.serialization.PayloadDecodeGuard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -205,23 +205,45 @@ public final class CommunicationManager {
         transport.sendToServer(type, data);
     }
 
-    /** Server → a single player. */
+    /**
+     * Server → a single player, <b>gated on that player's {@link ClientCapability}</b>: delivered if their
+     * client has answered the capability probe, parked until it does, and dropped if the probe window closed
+     * unanswered. See {@link ServerSendGate} for why the middle case cannot be a drop.
+     *
+     * <p>This is a behaviour change for every consumer, and a deliberate one: a server that pushes Eunomia
+     * framing at a player still running a pre-Eunomia build of the mod disconnects them. The only traffic
+     * exempt from the gate is the handshake answer itself.</p>
+     */
     public static <T> void sendToPlayer(UUID playerId, PacketType<T> type, T data) {
         requireDirection(type, false);
-        ServerTransport transport = requireServerTransport();
-        transport.sendToPlayer(playerId, type, data);
+        // Fail fast on a missing transport here rather than inside the gate: a consumer sending before the
+        // platform is wired should see that immediately, not have it surface from a flush minutes later.
+        requireServerTransport();
+        ServerSendGate.send(playerId, type,
+                () -> requireServerTransport().sendToPlayer(playerId, type, data));
     }
 
-    /** Server → all players. */
+    /** Server → all players, each one gated individually. See {@link #sendToPlayer}. */
     public static <T> void broadcast(PacketType<T> type, T data) {
-        requireDirection(type, false);
-        requireServerTransport().broadcast(type, data);
+        broadcastExcept(null, type, data);
     }
 
-    /** Server → all players except one (e.g. re-broadcasting a C2S event to everyone but its sender). */
+    /**
+     * Server → all players except one (e.g. re-broadcasting a C2S event to everyone but its sender), each
+     * remaining recipient gated individually. See {@link #sendToPlayer}.
+     *
+     * <p>A broadcast is expanded into per-player sends rather than handed to the transport wholesale,
+     * because the gate's answer is per player: one recipient may still be unresolved while the rest are
+     * long since flushed, and the packet has to wait for <em>that</em> player without being withheld from
+     * everyone else.</p>
+     */
     public static <T> void broadcastExcept(UUID excludedPlayerId, PacketType<T> type, T data) {
         requireDirection(type, false);
-        requireServerTransport().broadcastExcept(excludedPlayerId, type, data);
+        for (UUID playerId : requireServerTransport().connectedPlayerIds()) {
+            if (playerId != null && !playerId.equals(excludedPlayerId)) {
+                sendToPlayer(playerId, type, data);
+            }
+        }
     }
 
     // ── Dispatch (platform inbound) ─────────────────────────────────────────────────────────────
@@ -253,14 +275,19 @@ public final class CommunicationManager {
 
     /**
      * Decodes raw {@code gzip(json)} bytes for {@code channelKey} and routes them. This is the Paper /
-     * HTTP path, where no native codec ran, so the shared {@link PayloadCodec} does the resolution.
+     * HTTP path, where no native codec ran, so the shared {@link PayloadDecodeGuard} does the resolution -
+     * and drops, rather than throws on, bytes it cannot read.
      */
     public static boolean dispatchServerboundRaw(String channelKey, byte[] raw, ServerContext context) {
         PacketType<?> type = TYPES.get(channelKey);
         if (type == null || !SERVER_HANDLERS.containsKey(channelKey)) {
             return false;
         }
-        return dispatchServerbound(channelKey, PayloadCodec.decode(raw, type.payloadClass()), context);
+        Object payload = PayloadDecodeGuard.decodeOrDrop(raw, type.payloadClass(), channelKey);
+        if (payload == null) {
+            return false;
+        }
+        return dispatchServerbound(channelKey, payload, context);
     }
 
     /** Decodes raw {@code gzip(json)} bytes for {@code channelKey} and routes them to the client handler. */
@@ -269,7 +296,11 @@ public final class CommunicationManager {
         if (type == null || !CLIENT_HANDLERS.containsKey(channelKey)) {
             return false;
         }
-        return dispatchClientbound(channelKey, PayloadCodec.decode(raw, type.payloadClass()), context);
+        Object payload = PayloadDecodeGuard.decodeOrDrop(raw, type.payloadClass(), channelKey);
+        if (payload == null) {
+            return false;
+        }
+        return dispatchClientbound(channelKey, payload, context);
     }
 
     @SuppressWarnings("unchecked")
@@ -334,10 +365,52 @@ public final class CommunicationManager {
     public static void enableServerHandshake() {
         register(HandshakePackets.HELLO);
         register(HandshakePackets.HELLO_ACK);
-        onServerReceive(HandshakePackets.HELLO, (hello, context) ->
-                context.reply(HandshakePackets.HELLO_ACK,
-                        new ServerHelloPayload(HandshakePackets.PROTOCOL_VERSION,
-                                new ArrayList<>(serverHandlerChannels()), serverSyncPolicy())));
+        onServerReceive(HandshakePackets.HELLO, (hello, context) -> {
+            // The HELLO *is* the capability answer: recording it before replying releases everything a
+            // join listener parked for this player while their probe was still in flight.
+            markPlayerCapable(context.senderId());
+            context.reply(HandshakePackets.HELLO_ACK,
+                    new ServerHelloPayload(HandshakePackets.PROTOCOL_VERSION,
+                            new ArrayList<>(serverHandlerChannels()), serverSyncPolicy()));
+        });
+    }
+
+    /**
+     * Server-side: record that {@code playerId}'s client speaks Eunomia and flush anything withheld from
+     * them. Called automatically by the HELLO handler {@link #enableServerHandshake()} installs; exposed so
+     * a platform that learns the same fact by another route (a relay session, a proxy hint) can say so.
+     */
+    public static void markPlayerCapable(UUID playerId) {
+        ServerSendGate.markCapable(playerId);
+    }
+
+    /**
+     * Server-side: close {@code playerId}'s capability probe window with no answer - drop what is withheld
+     * and withhold everything later for this connection. The gate arms this itself, once, the first time it
+     * has to park something for a player; this entry point exists for platforms (and tests) that want to
+     * conclude it sooner. A no-op once the player's HELLO has arrived.
+     */
+    public static void markPlayerIncapable(UUID playerId) {
+        ServerSendGate.markIncapable(playerId);
+    }
+
+    /** Server-side: what this server currently knows about {@code playerId}'s client. Never {@code null}. */
+    public static ClientCapability playerCapability(UUID playerId) {
+        return ServerSendGate.capability(playerId);
+    }
+
+    /**
+     * Server-side: forget every scrap of per-player send state. Call from the platform's disconnect hook -
+     * the loader's play-listener teardown, Paper's {@code PlayerQuitEvent}. Not optional: without it the
+     * gate's map grows by one entry per join for the lifetime of the server process.
+     */
+    public static void onPlayerDisconnect(UUID playerId) {
+        ServerSendGate.forget(playerId);
+    }
+
+    /** Server-side: drop all per-player send state at shutdown, so a restart in-process starts clean. */
+    public static void onServerStopping() {
+        ServerSendGate.reset();
     }
 
     /**
@@ -376,6 +449,9 @@ public final class CommunicationManager {
     public static void beginClientConnection() {
         SERVER_CAPABILITIES.reset();
         ClientSendGate.reset();
+        // Re-arm the once-per-channel decode warnings: the next server may be a different version, and a
+        // mismatch there deserves to be reported again rather than suppressed by the previous connection.
+        PayloadDecodeGuard.reset();
     }
 
     /**
@@ -486,6 +562,8 @@ public final class CommunicationManager {
         SERVER_CAPABILITIES.reset();
         ClientSendGate.reset();
         ClientSendGate.setExternalTransportPreferred(null);
+        ServerSendGate.reset();
+        PayloadDecodeGuard.reset();
         // Last: a hook may re-derive state from the fields cleared above, so let them settle first.
         RESET_HOOKS.forEach(Runnable::run);
     }

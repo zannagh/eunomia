@@ -3,6 +3,7 @@ package de.zannagh.eunomia.networking.payloads;
 
 import de.zannagh.eunomia.networking.packets.PacketType;
 import de.zannagh.eunomia.networking.serialization.PayloadCodec;
+import de.zannagh.eunomia.networking.serialization.PayloadDecodeGuard;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -29,7 +30,10 @@ public final class EunomiaPayload implements CustomPacketPayload {
         this.data = data;
     }
 
-    /** The decoded POJO this wrapper carries. */
+    /**
+     * The decoded POJO this wrapper carries, or {@code null} when the inbound bytes could not be decoded
+     * (see {@link #codecFor}). A {@code null} here means "drop this packet", never "empty payload".
+     */
     public Object data() {
         return data;
     }
@@ -50,6 +54,11 @@ public final class EunomiaPayload implements CustomPacketPayload {
      * shared {@link PayloadCodec}; the payload packet is self-delimiting, so decode consumes the whole
      * readable buffer rather than a manual length prefix - keeping the format identical to the
      * byte-array path the Paper plugin uses.
+     * <p>
+     * Decode goes through {@link PayloadDecodeGuard} rather than {@link PayloadCodec} directly: this runs
+     * inside Netty's packet decoder, so anything thrown here becomes a {@code DecoderException} and drops
+     * the connection. Bytes we cannot read (an older, differently-framed version of the mod on the other
+     * end) yield a payload with {@code null} {@link #data()}, which the packet-listener mixins discard.
      */
     public static StreamCodec<ByteBuf, EunomiaPayload> codecFor(
             PacketType<?> packetType, CustomPacketPayload.Type<EunomiaPayload> type) {
@@ -60,7 +69,8 @@ public final class EunomiaPayload implements CustomPacketPayload {
                 (buf) -> {
                     byte[] bytes = new byte[buf.readableBytes()];
                     buf.readBytes(bytes);
-                    return new EunomiaPayload(type, PayloadCodec.decode(bytes, payloadClass));
+                    return new EunomiaPayload(
+                            type, PayloadDecodeGuard.decodeOrDrop(bytes, payloadClass, type.id().toString()));
                 });
     }
 }

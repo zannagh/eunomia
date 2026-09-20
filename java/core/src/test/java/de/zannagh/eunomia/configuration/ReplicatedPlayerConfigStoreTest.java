@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collection;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -85,6 +86,14 @@ class ReplicatedPlayerConfigStoreTest {
     }
 
     private static final class RecordingServerTransport implements ServerTransport {
+        /** Recipients {@code broadcast}/{@code broadcastExcept} expand to, populated per test. */
+        final List<UUID> online = new ArrayList<>();
+
+        @Override
+        public Collection<UUID> connectedPlayerIds() {
+            return online;
+        }
+
         final List<Sent> sent = new ArrayList<>();
 
         @Override
@@ -124,6 +133,14 @@ class ReplicatedPlayerConfigStoreTest {
         CommunicationManager.resetForTesting();
     }
 
+    /** Marks these players connected and Eunomia-capable, i.e. joined and handshaken. */
+    private void online(UUID... players) {
+        for (UUID player : players) {
+            transport.online.add(player);
+            CommunicationManager.markPlayerCapable(player);
+        }
+    }
+
     private ReplicatedPlayerConfigStore<HideConfig> store() {
         return new ReplicatedPlayerConfigStore<>(HideConfig.class, id -> new HideConfig(id, 0), CHANNEL).enableServer();
     }
@@ -131,6 +148,9 @@ class ReplicatedPlayerConfigStoreTest {
     @Test
     void storesUnderAuthenticatedSenderNotClientClaimAndRelays() {
         ReplicatedPlayerConfigStore<HideConfig> store = store();
+        // The relay is a broadcastExcept, which the clientbound capability gate expands into one gated send
+        // per recipient - so the transport has to have recipients, and they have to have said HELLO.
+        online(ALICE, BOB);
 
         // The payload lies that it is Bob's, but Alice is the authenticated sender.
         boolean handled = CommunicationManager.dispatchServerbound(
@@ -142,8 +162,8 @@ class ReplicatedPlayerConfigStoreTest {
         assertFalse(store.contains(BOB), "the client-claimed id is ignored");
 
         Sent relay = transport.sent.get(0);
-        assertEquals(ALICE, relay.target());
-        assertEquals("except:" + CHANNEL.channelKey(), relay.channel());
+        assertEquals(BOB, relay.target(), "the sender is excluded; only the other player gets the relay");
+        assertEquals(CHANNEL.channelKey(), relay.channel());
         assertEquals(ALICE, ((HideConfig) relay.data()).getPlayerId());
     }
 
@@ -153,6 +173,7 @@ class ReplicatedPlayerConfigStoreTest {
         store.put(ALICE, new HideConfig(ALICE, 3));
         store.put(BOB, new HideConfig(BOB, 9));
         transport.sent.clear();
+        online(CAROL);
 
         store.pushSnapshotTo(CAROL);
 

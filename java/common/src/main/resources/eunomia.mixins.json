@@ -6,6 +6,7 @@
   "mixins": [
     "networking.ServerLoginMixin",
     "networking.ServerPlayNetworkHandlerMixin",
+    "networking.PlayerListMixin",
     "networking.MinecraftServerMixin"
   ]
 }

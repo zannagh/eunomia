@@ -69,6 +69,8 @@ public final class EunomiaPaperPlugin extends JavaPlugin {
         List<String> clientboundChannels = registerBukkitChannels();
         ChannelSubscriber subscriber = new ChannelSubscriber(getLogger(), clientboundChannels);
         getServer().getPluginManager().registerEvents(new PaperJoinListener(subscriber, transport, permissions), this);
+        // The other half of the per-player lifecycle: without this the capability gate's map never shrinks.
+        getServer().getPluginManager().registerEvents(new PaperQuitListener(), this);
 
         getLogger().info("Eunomia Paper networking enabled ("
                 + CommunicationManager.serverboundTypes().size() + " C2S, "

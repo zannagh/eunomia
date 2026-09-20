@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -49,6 +50,14 @@ class CommunicationManagerTest {
     }
 
     private static final class RecordingServerTransport implements ServerTransport {
+        /** Recipients {@code broadcast}/{@code broadcastExcept} expand to, populated per test. */
+        final List<UUID> online = new ArrayList<>();
+
+        @Override
+        public Collection<UUID> connectedPlayerIds() {
+            return online;
+        }
+
         final List<String> sent = new ArrayList<>();
 
         @Override
@@ -84,6 +93,9 @@ class CommunicationManagerTest {
     void serverHandlerReceivesDecodedPayloadAndCanReply() {
         RecordingServerTransport transport = new RecordingServerTransport();
         CommunicationManager.setServerTransport(transport);
+        // Clientbound sends are gated on the recipient's capability, so stand in for the HELLO a real
+        // client sends on join - otherwise the reply below is (correctly) parked rather than delivered.
+        CommunicationManager.markPlayerCapable(SENDER);
 
         AtomicReference<String> received = new AtomicReference<>();
         CommunicationManager.onServerReceive(ExamplePackets.PING, (payload, ctx) -> {

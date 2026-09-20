@@ -52,6 +52,50 @@ CommunicationManager.broadcast(ACK, snapshot);                        // server 
 Direction is enforced: sending a `serverbound` packet to a client (or vice-versa) throws, catching the
 mistake at the call site.
 
+### Both directions are gated on the other side's capability
+
+Neither direction sends blind. Emitting Eunomia's framing at something that does not understand it is
+not a no-op — it is a disconnect — so each side withholds until it knows the other speaks Eunomia.
+
+**Client -> server** is gated by `SendOptions` (default `AFTER_SUCCESSFUL_HANDSHAKE`): the packet is
+held until the capability probe resolves, then sent or dropped. See below.
+
+**Server -> client** is gated per player, and this is the direction that changed behaviour for
+existing consumers. `sendToPlayer`, `broadcast` and `broadcastExcept` now consult what the server
+knows about each recipient:
+
+| The recipient's client | What happens to the send |
+| --- | --- |
+| sent a `eunomia:hello` (capability `PRESENT`) | delivered immediately |
+| has not answered yet (`UNKNOWN`) | **parked**, then flushed in submission order when their HELLO lands |
+| never answered before the probe window closed (`ABSENT`) | dropped, and every later send to them is dropped on arrival |
+
+Parking, rather than dropping, is the whole point of the unknown state: consumers push their
+join-time state from a join listener that routinely runs before the client's HELLO has arrived, so a
+gate that dropped what it could not yet vouch for would silently break well-behaved clients.
+
+A `broadcast` is therefore expanded into one gated send per recipient — one player still being
+unresolved must not withhold the packet from everyone else.
+
+Why it exists: a player on a **pre-Eunomia build of your own mod** has a shipped decoder that reads
+Eunomia's gzip framing as a bogus 500 MB length, throws, and is disconnected by their own client.
+Those builds cannot be fixed retroactively, so the only lever is not sending to them.
+
+The only channel exempt from the gate is `eunomia:hello_ack` — it is the packet that *resolves* the
+capability, so gating it on the capability would deadlock every connection, and it is only ever sent
+in reply to a HELLO. There is deliberately no general "send unsafely" entry point.
+
+```java
+CommunicationManager.playerCapability(uuid);     // UNKNOWN / PRESENT / ABSENT
+CommunicationManager.markPlayerCapable(uuid);    // normally done for you by the HELLO handler
+CommunicationManager.markPlayerIncapable(uuid);  // close the probe window early
+CommunicationManager.onPlayerDisconnect(uuid);   // drop the player's state - platforms call this
+```
+
+Platform wiring is already in place: the loader fires it from the play-listener teardown mixin, and
+Paper from `PlayerQuitEvent`. Only a custom `ServerTransport` needs to do anything — it must
+implement `connectedPlayerIds()`, which is how a broadcast finds its recipients.
+
 ## Detect whether the server speaks Eunomia
 
 A client can ask, per connection, whether the server it joined runs Eunomia and whether it has a

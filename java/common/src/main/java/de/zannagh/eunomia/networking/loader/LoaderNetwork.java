@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 //? if < 1.20.5 {
 /*import de.zannagh.eunomia.networking.packets.ServerContext;
 import de.zannagh.eunomia.networking.packets.ClientContext;
-import de.zannagh.eunomia.networking.serialization.PayloadCodec;
+import de.zannagh.eunomia.networking.serialization.PayloadDecodeGuard;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.Identifier;
 
@@ -72,6 +72,10 @@ public final class LoaderNetwork {
             @Override
             public void acceptStopping(MinecraftServer server) {
                 ServerHolder.clear();
+                // Drop every player's clientbound gate state. Disconnects normally do this one at a time,
+                // but a single-player world stops the integrated server without necessarily running that
+                // path for everyone, and the next world must not inherit the previous one's answers.
+                CommunicationManager.onServerStopping();
             }
         });
     }
@@ -153,7 +157,14 @@ public final class LoaderNetwork {
         }
         byte[] bytes = new byte[buf.readableBytes()];
         buf.readBytes(bytes);
-        return CommunicationManager.dispatchServerbound(type.channelKey(), PayloadCodec.decode(bytes, type.payloadClass()), ctx);
+        Object payload = PayloadDecodeGuard.decodeOrDrop(bytes, type.payloadClass(), type.channelKey());
+        if (payload == null) {
+            // Undecodable bytes on a channel we own (an older, differently-framed version on the other
+            // end). Report it as consumed so vanilla does not also complain, but dispatch nothing - the
+            // guard has logged it, and throwing from this network thread would drop the connection.
+            return true;
+        }
+        return CommunicationManager.dispatchServerbound(type.channelKey(), payload, ctx);
     }
 
     public static boolean dispatchLegacyClientbound(Identifier channel, FriendlyByteBuf buf, ClientContext ctx) {
@@ -163,7 +174,14 @@ public final class LoaderNetwork {
         }
         byte[] bytes = new byte[buf.readableBytes()];
         buf.readBytes(bytes);
-        return CommunicationManager.dispatchClientbound(type.channelKey(), PayloadCodec.decode(bytes, type.payloadClass()), ctx);
+        Object payload = PayloadDecodeGuard.decodeOrDrop(bytes, type.payloadClass(), type.channelKey());
+        if (payload == null) {
+            // Undecodable bytes on a channel we own (an older, differently-framed version on the other
+            // end). Report it as consumed so vanilla does not also complain, but dispatch nothing - the
+            // guard has logged it, and throwing from this network thread would drop the connection.
+            return true;
+        }
+        return CommunicationManager.dispatchClientbound(type.channelKey(), payload, ctx);
     }
     *///?}
 }

@@ -1,6 +1,7 @@
 package de.zannagh.eunomia.paper;
 
 import de.zannagh.eunomia.keyed.ReplicatedStores;
+import de.zannagh.eunomia.networking.comms.CommunicationManager;
 import de.zannagh.eunomia.networking.examples.ExamplePackets;
 import de.zannagh.eunomia.networking.examples.PermissionPayload;
 import de.zannagh.eunomia.paper.net.ChannelSubscriber;
@@ -34,7 +35,12 @@ public final class PaperJoinListener implements Listener {
         Player player = event.getPlayer();
         subscriber.subscribe(player);
         int level = permissions.getPermissionLevel(player);
-        transport.send(player, ExamplePackets.PERMISSION, new PermissionPayload(level));
+        // Through the manager, not the transport, so the clientbound capability gate applies: a player on a
+        // pre-Eunomia build of the consuming mod must not be handed Eunomia framing at join, and a player
+        // whose HELLO is merely still in flight must not lose this packet either. Sending straight down the
+        // transport (as this did) would bypass both halves of that.
+        CommunicationManager.sendToPlayer(player.getUniqueId(), ExamplePackets.PERMISSION,
+                new PermissionPayload(level));
         // Dump every replicated store to the newcomer (subscribed above, so the sends land).
         ReplicatedStores.pushAllTo(player.getUniqueId());
     }

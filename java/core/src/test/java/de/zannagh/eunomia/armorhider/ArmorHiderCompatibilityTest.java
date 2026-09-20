@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Collection;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -48,6 +49,14 @@ class ArmorHiderCompatibilityTest {
     }
 
     private static final class RecordingServerTransport implements ServerTransport {
+        /** Recipients {@code broadcast}/{@code broadcastExcept} expand to, populated per test. */
+        final List<UUID> online = new ArrayList<>();
+
+        @Override
+        public Collection<UUID> connectedPlayerIds() {
+            return online;
+        }
+
         final List<Sent> sent = new ArrayList<>();
 
         @Override
@@ -95,6 +104,14 @@ class ArmorHiderCompatibilityTest {
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    /** Marks these players connected and Eunomia-capable, i.e. joined and handshaken. */
+    private void online(UUID... players) {
+        for (UUID player : players) {
+            transport.online.add(player);
+            CommunicationManager.markPlayerCapable(player);
         }
     }
 
@@ -152,6 +169,9 @@ class ArmorHiderCompatibilityTest {
         ArmorHiderConfig config = GSON.fromJson(resource("client-config.json"), ArmorHiderConfig.class);
 
         ReplicatedPlayerConfigStore<ArmorHiderConfig> store = store();
+        // Both players are connected and have handshaken: the clientbound capability gate expands the
+        // relay below into one gated send per recipient, and withholds from anyone who has not.
+        online(sender, otherPlayer);
 
         boolean handled = CommunicationManager.dispatchServerbound(
                 CHANNEL.channelKey(), config, new TestServerContext(sender, "ArmorHiderSmoke"));
@@ -162,8 +182,8 @@ class ArmorHiderCompatibilityTest {
 
         // Published to everyone else on incoming update.
         Sent relay = transport.sent.get(0);
-        assertEquals(sender, relay.target());
-        assertEquals("except:" + CHANNEL.channelKey(), relay.channel());
+        assertEquals(otherPlayer, relay.target(), "the sender is excluded; the other player gets the relay");
+        assertEquals(CHANNEL.channelKey(), relay.channel());
 
         // Published to a newcomer via a full snapshot.
         transport.sent.clear();

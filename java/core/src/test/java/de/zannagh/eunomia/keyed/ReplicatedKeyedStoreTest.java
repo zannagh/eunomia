@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collection;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +53,14 @@ class ReplicatedKeyedStoreTest {
     }
 
     private static final class RecordingServerTransport implements ServerTransport {
+        /** Recipients {@code broadcast}/{@code broadcastExcept} expand to, populated per test. */
+        final List<UUID> online = new ArrayList<>();
+
+        @Override
+        public Collection<UUID> connectedPlayerIds() {
+            return online;
+        }
+
         final List<Sent> sent = new ArrayList<>();
 
         @Override
@@ -97,6 +106,14 @@ class ReplicatedKeyedStoreTest {
         CommunicationManager.resetForTesting();
     }
 
+    /** Marks these players connected and Eunomia-capable, i.e. joined and handshaken. */
+    private void online(UUID... players) {
+        for (UUID player : players) {
+            transport.online.add(player);
+            CommunicationManager.markPlayerCapable(player);
+        }
+    }
+
     private ReplicatedKeyedStore<TestEntry> serverStore() {
         return new ReplicatedKeyedStore<>(1, TestEntry.class, CHANNEL).enableServer();
     }
@@ -104,6 +121,9 @@ class ReplicatedKeyedStoreTest {
     @Test
     void inboundUpdateIsStoredAndRelayedToOthers() {
         ReplicatedKeyedStore<TestEntry> store = serverStore();
+        // The relay is a broadcastExcept, which the clientbound capability gate expands into one gated send
+        // per recipient - so the transport has to have recipients, and they have to have said HELLO.
+        online(ALICE, BOB);
 
         boolean handled = CommunicationManager.dispatchServerbound(
                 CHANNEL.channelKey(), new TestEntry(ALICE, 5), new TestServerContext(ALICE, "alice"));
@@ -113,8 +133,8 @@ class ReplicatedKeyedStoreTest {
         // Relayed to everyone except the sender, carrying the stored value.
         assertEquals(1, transport.sent.size());
         Sent relay = transport.sent.get(0);
-        assertEquals(ALICE, relay.target());
-        assertEquals("except:" + CHANNEL.channelKey(), relay.channel());
+        assertEquals(BOB, relay.target(), "the sender is excluded; only the other player gets the relay");
+        assertEquals(CHANNEL.channelKey(), relay.channel());
         assertEquals(5, ((TestEntry) relay.data()).value);
     }
 
@@ -124,6 +144,7 @@ class ReplicatedKeyedStoreTest {
         store.put(KeyPath.of(ALICE), new TestEntry(ALICE, 3));
         store.put(KeyPath.of(BOB), new TestEntry(BOB, 9));
         transport.sent.clear();
+        online(CAROL);
 
         store.pushSnapshotTo(CAROL);
 

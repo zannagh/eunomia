@@ -34,6 +34,12 @@ public abstract class ClientPacketListenerMixin extends ClientCommonPacketListen
             return;
         }
         ci.cancel();
+        if (eunomiaPayload.data() == null) {
+            // Undecodable bytes on one of our channels - typically a server running a version of the mod
+            // that predates Eunomia and still writes the old length-prefixed framing. The codec logged it;
+            // dropping it here keeps us connected instead of dying in the packet decoder.
+            return;
+        }
         String channelKey = eunomiaPayload.type().id().toString();
         McClientContext context = new McClientContext((ClientPacketListener) (Object) this, minecraft);
         CommunicationManager.dispatchClientbound(channelKey, eunomiaPayload.data(), context);

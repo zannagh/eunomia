@@ -6,6 +6,9 @@ import de.zannagh.eunomia.networking.serialization.PayloadCodec;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 
@@ -45,6 +48,15 @@ public final class PaperServerTransport implements ServerTransport {
                 send(player, type, data);
             }
         }
+    }
+
+    @Override
+    public Collection<UUID> connectedPlayerIds() {
+        List<UUID> ids = new ArrayList<>();
+        for (Player player : plugin.getServer().getOnlinePlayers()) {
+            ids.add(player.getUniqueId());
+        }
+        return ids;
     }
 
     /** Encodes and sends a clientbound payload to one player. Public so {@code PaperServerContext.reply} reuses it. */

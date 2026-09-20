@@ -6,6 +6,9 @@ import de.zannagh.eunomia.server.ServerHolder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 
 //? if >= 1.20.5 {
@@ -60,6 +63,19 @@ public final class McServerTransport implements ServerTransport {
                 send(player, type, data);
             }
         }
+    }
+
+    @Override
+    public Collection<UUID> connectedPlayerIds() {
+        MinecraftServer server = ServerHolder.get();
+        if (server == null) {
+            return List.of();
+        }
+        List<UUID> ids = new ArrayList<>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            ids.add(player.getUUID());
+        }
+        return ids;
     }
 
     static <T> void send(ServerPlayer player, PacketType<T> type, T data) {
