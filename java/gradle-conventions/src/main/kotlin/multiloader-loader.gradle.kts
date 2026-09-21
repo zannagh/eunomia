@@ -6,6 +6,10 @@ plugins {
 val sc = project.stonecutterBuild
 sc.constants["fabric"] = sc.current.project.contains("fabric")
 sc.constants["neoforge"] = sc.current.project.contains("neoforge")
+// `startsWith`, NOT `contains`: every neoforge-* project name CONTAINS "forge", so a
+// `contains("forge")` test would light this constant up on all ten NeoForge variants and make
+// `//? if forge` blocks compile into them.
+sc.constants["forge"] = sc.current.project.startsWith("forge")
 
 val commonNode = sc.node.sibling("common")
     ?: error("Could not find common branch sibling for ${sc.current.project}")

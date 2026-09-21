@@ -1,8 +1,9 @@
 name: Prepare Platform Upload
 description: >
   Finds the correct JAR for a Minecraft version/loader in the staged artifacts and prepares the
-  Modrinth/CurseForge version metadata (number, display name, type). Eunomia publishes only its
-  Fabric and NeoForge loader jars to the mod platforms.
+  Modrinth/CurseForge version metadata (number, display name, type). Eunomia publishes its Fabric,
+  NeoForge and classic-Forge (1.20.1 only) loader jars to the mod platforms - never the Paper plugin,
+  which is Maven-only.
 
 inputs:
   display-version:
@@ -18,7 +19,7 @@ inputs:
     description: Path to the downloaded artifacts directory
     required: true
   loader:
-    description: The mod loader (fabric, neoforge)
+    description: The mod loader (fabric, neoforge, forge)
     required: true
 
 outputs:

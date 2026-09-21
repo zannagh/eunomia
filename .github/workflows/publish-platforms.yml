@@ -33,10 +33,14 @@
 #   experimental push reaches them without touching the manual-release path at all.
 #
 # Scope decisions for eunomia (differs from armor-hider):
-#   - Only the Fabric and NeoForge loader jars go to the platforms. The Paper plugin is published to
-#     Maven only (it is a library dependency, not a consumer-facing mod), so there is no Bukkit-plugins
-#     or Hangar job here.
-#   - CurseForge project 1654849 is a Minecraft > Mods project, so Fabric/NeoForge upload straight to it.
+#   - Only the Fabric, NeoForge and classic-Forge loader jars go to the platforms. The Paper plugin is
+#     published to Maven only (it is a library dependency, not a consumer-facing mod), so there is no
+#     Bukkit-plugins or Hangar job here.
+#   - CurseForge project 1654849 is a Minecraft > Mods project, so Fabric/NeoForge/Forge upload
+#     straight to it.
+#   - Classic Forge (LexForge) is 1.20.1-ONLY by design: Forge 47.x is the last line eunomia targets
+#     and NeoForge covers 1.20.2+. It shows up as a single `forge` matrix entry below. Both Modrinth
+#     and CurseForge have a first-class `forge` loader tag, so mc-publish needs no mapping for it.
 #
 # The Gradle build lives under java/, so gradle steps set working-directory: java and the staged jars
 # are under java/staging/.
@@ -160,11 +164,23 @@ jobs:
         with:
           gradlew-path: "./java/gradlew"
 
-      - name: Cache NeoForge NFRT Artifacts
+      # Both moddev-gradle loaders (NeoForge and classic Forge) provision their Minecraft artifacts
+      # through NFRT into <variant>/build/moddev/artifacts, so BOTH trees are cached - the forge tree
+      # alone is ~91 MB and was previously re-provisioned on every run.
+      #
+      # The key must hash files that actually exist AND change when the toolchain does. The former key
+      # hashed java/neoforge/versions/*/gradle.properties, which is not a path this repo has (per-variant
+      # config lives in stonecutter.properties.toml), so hashFiles returned "" and the key was the
+      # constant nfrt-<os>- : frozen at the first save and never invalidated on a loader-version bump.
+      - name: Cache NeoForge/Forge NFRT Artifacts
         uses: actions/cache@v6
         with:
-          path: java/neoforge/versions/*/build/moddev/artifacts/
-          key: nfrt-${{ runner.os }}-${{ hashFiles('java/neoforge/versions/*/gradle.properties') }}
+          path: |
+            java/neoforge/versions/*/build/moddev/artifacts/
+            java/forge/versions/*/build/moddev/artifacts/
+          key: nfrt-${{ runner.os }}-${{ hashFiles('java/stonecutter.properties.toml', 'java/stonecutter.gradle.kts') }}
+          restore-keys: |
+            nfrt-${{ runner.os }}-
 
       - name: Build & Stage Artifacts
         run: |
@@ -175,11 +191,13 @@ jobs:
       - name: Read Supported Versions
         id: versions
         run: |
-          # Only the Fabric/NeoForge loader groups are published to the platforms; the version-agnostic
-          # "paper" jar is intentionally excluded (Maven only).
+          # Only the Fabric/NeoForge/Forge loader groups are published to the platforms; the
+          # version-agnostic "paper" jar is intentionally excluded (Maven only). The `forge` group holds
+          # exactly one entry (mc-1.20.1-forge) - see the scope note at the top of this file.
           MATRIX=$(jq -c '[
             (.fabric // {} | keys[] | {minecraft: ., loader: "fabric"}),
-            (.neoforge // {} | keys[] | {minecraft: ., loader: "neoforge"})
+            (.neoforge // {} | keys[] | {minecraft: ., loader: "neoforge"}),
+            (.forge // {} | keys[] | {minecraft: ., loader: "forge"})
           ]' staging/versions.json)
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
@@ -241,7 +259,7 @@ jobs:
           files: artifacts/**/*.jar
 
   # ============================================================================
-  # PUBLISH TO MODRINTH (Fabric + NeoForge)
+  # PUBLISH TO MODRINTH (Fabric + NeoForge + Forge)
   # ============================================================================
   publish-modrinth:
     name: Publish to Modrinth
@@ -313,7 +331,7 @@ jobs:
           retry-delay: 10000
 
   # ============================================================================
-  # PUBLISH TO CURSEFORGE (Fabric + NeoForge, Mods section)
+  # PUBLISH TO CURSEFORGE (Fabric + NeoForge + Forge, Mods section)
   # ============================================================================
   publish-curseforge:
     name: Publish to CurseForge
@@ -423,4 +441,4 @@ jobs:
 
             - **Project ID**: `${{ env.CURSEFORGE_PROJECT_ID }}`
             - **Publish Enabled**: `${{ env.PUBLISH_TO_CURSEFORGE }}`
-            - **Note**: Fabric/NeoForge only - the Paper plugin is published to Maven, not the platforms.
+            - **Note**: Fabric/NeoForge/Forge only - the Paper plugin is published to Maven, not the platforms.

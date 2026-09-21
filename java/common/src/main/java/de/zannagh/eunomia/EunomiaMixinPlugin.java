@@ -36,9 +36,26 @@ public class EunomiaMixinPlugin implements IMixinConfigPlugin {
     public void onLoad(String mixinPackage) {
     }
 
+    /**
+     * Returns {@code null}, never {@code ""}.
+     *
+     * <p>Mixin only consults this method when the config JSON carries no {@code "refmap"} field
+     * (see {@code MixinConfig.onSelect}: {@code refMapperConfig} is read from the JSON first and the
+     * plugin is asked only if it is still null). A NON-null return is then used verbatim as the
+     * resource path handed to {@code ReferenceMapper.read}. Returning {@code ""} therefore does not
+     * mean "no preference" - it means "read the refmap from the resource named <empty string>",
+     * which never resolves, silently yields {@code ReferenceMapper.DEFAULT_MAPPER}, and leaves every
+     * obfuscated target unmapped. On Fabric/NeoForge (Mojang-mapped at runtime) that is invisible;
+     * in a REOBFUSCATED classic-Forge jar it makes every injection fail to resolve while dev runs
+     * stay green.</p>
+     *
+     * <p>{@code null} is the correct "I have no opinion" answer: Mixin then falls back to
+     * {@code ReferenceMapper.DEFAULT_RESOURCE} AND sets its suppress-warning flag, so the absence of
+     * a refmap in a deobfuscated dev run stays quiet.</p>
+     */
     @Override
     public String getRefMapperConfig() {
-        return "";
+        return null;
     }
 
     @Override

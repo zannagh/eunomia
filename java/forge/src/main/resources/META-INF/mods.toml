@@ -1,0 +1,47 @@
+# Classic Forge 1.20.1 manifest. Note the differences from the NeoForge one next door - they are not
+# cosmetic: the file is `mods.toml` (not `neoforge.mods.toml`), dependency inclusion is expressed as
+# `mandatory=true/false` (not `type="required"/"optional"`), and there is NO [[mixins]] section at
+# all. Forge 1.20.1 registers mixin configs from the `MixinConfigs` MANIFEST attribute instead,
+# which forge/build.gradle.kts stamps onto `tasks.jar`.
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="eunomia"
+version="${version}"
+displayName="Eunomia"
+description="Lib for common stuff (//TODO adjust this)"
+authors="zannagh"
+logoFile="assets/eunomia/icon.png"
+# eunomia MUST stay joinable across a version mismatch. The whole point of its capability handshake
+# is that a client carrying eunomia can connect to a server that does NOT have it (and vice versa):
+# the client asks, gets no answer, and degrades. Forge's default displayTest (MATCH_VERSION) would
+# make that mismatch a red X on the multiplayer server list and refuse the connection outright, so
+# the handshake would never get the chance to run. IGNORE_ALL_VERSION means "never send my version
+# and never compare the other side's" - no ping-time check at all, decision left to eunomia itself.
+displayTest="IGNORE_ALL_VERSION"
+
+[[dependencies."eunomia"]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies."eunomia"]]
+modId="minecraft"
+mandatory=true
+versionRange="${minecraft_version}"
+ordering="NONE"
+side="BOTH"
+
+# Soft dependency: eunomia resolves admin permissions through LuckPerms when it is installed, and
+# falls back to vanilla op levels when it is not. mandatory=false + ordering AFTER so LuckPerms is
+# loaded first where present, without ever being required.
+[[dependencies."eunomia"]]
+modId="luckperms"
+mandatory=false
+versionRange="[5.4,)"
+ordering="AFTER"
+side="SERVER"

@@ -23,7 +23,8 @@
       "neoforge-1.21.11:1.21.11",
       "neoforge-26.1.2:26.1.2:build.deobfuscated.gradle.kts",
       "neoforge-26.2:26.2:build.deobfuscated.gradle.kts",
-      "neoforge-26.3:26.3:build.deobfuscated.gradle.kts"
+      "neoforge-26.3:26.3:build.deobfuscated.gradle.kts",
+      "forge-1.20.1:1.20.1"
     ],
     "fabric": [
       "fabric-1.20.1:1.20.1",
@@ -49,6 +50,11 @@
       "neoforge-26.1.2:26.1.2",
       "neoforge-26.2:26.2",
       "neoforge-26.3:26.3"
+    ],
+    // Classic Forge (LexForge) is 1.20.1-ONLY on purpose: Forge 47.x is the last line eunomia
+    // targets, and everything from 1.20.2 upward is covered by the NeoForge branch above.
+    "forge": [
+      "forge-1.20.1:1.20.1"
     ],
   },
 }

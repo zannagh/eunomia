@@ -1,6 +1,10 @@
 plugins {
     id("dev.kikugie.stonecutter")
     id("net.neoforged.moddev") version "2.0.147" apply false
+    // Classic Forge (LexForge, 1.20.1 only). Ships in the SAME moddev-gradle artifact as the plugin
+    // above, so the version MUST stay identical - two different versions of the plugin id resolve to
+    // two copies of moddev-gradle on the build classpath and Gradle fails the build.
+    id("net.neoforged.moddev.legacyforge") version "2.0.147" apply false
     // Supplies the JaCoCo tooling classpath used by the `aggregatedCoverage` JacocoReport below.
     id("jacoco")
 }
@@ -74,7 +78,8 @@ tasks.register("stageArtifacts") {
     // staged - it is a maven library (published via `publish`), not a mod-platform artifact.
     val paperProjectPath = ":paper"
     val loaderProjects = allprojects.filter {
-        it.path.startsWith(":fabric:") || it.path.startsWith(":neoforge:") || it.path == paperProjectPath
+        it.path.startsWith(":fabric:") || it.path.startsWith(":neoforge:") ||
+            it.path.startsWith(":forge:") || it.path == paperProjectPath
     }
     loaderProjects.forEach { dependsOn("${it.path}:build") }
 

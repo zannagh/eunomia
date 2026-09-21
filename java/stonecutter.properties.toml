@@ -186,3 +186,27 @@ fabricapi.semver = "0.159.4+26.3"
 ["neoforge-26.3"]
 "neoforge.version" = "26.3.0.1-beta"
 "neoforge.minecraft_version_range" = "[26.3]"
+
+# ── Forge (classic / LexForge) ────────────────────────────────────────────────
+#
+# 1.20.1 ONLY. Forge 47.x is a 1.20.1-exclusive line - unlike the Fabric variant for the same MC
+# version it does NOT also run on 1.20, so `game_versions` is the single version and deliberately
+# NOT the "1.20,1.20.1" pair from the shared ["1.20.1"] section above.
+#
+# display_version likewise overrides the shared one, for the MAVEN coordinate - not for staging.
+# (stageArtifacts' versionMap is keyed loader -> display_version -> game_versions, with the loader
+# taken from `proj.name.substringBefore("-")`, so "forge" and "fabric" are different top-level keys
+# and its conflicting-game_versions guard never compares the two rows. Staging would be fine either
+# way.)
+#
+# The real reason: :common publishes `de.zannagh.eunomia:eunomia-common:<semVer>+<display_version>`,
+# and that coordinate carries NO loader segment. Sharing fabric-1.20.1's "mc-1.20.0-1" would make
+# fabric-1.20.1 and forge-1.20.1 publish the very same GAV even though the jars genuinely differ
+# (Forge 47.x / Mixin 0.8.5 vs Fabric), so one would silently overwrite the other. publish-maven.yml
+# encodes the same rule from the other side: its publish-common matrix must list each
+# display_version exactly once, which is only possible if forge-1.20.1 owns a distinct one.
+["forge-1.20.1"]
+display_version = "mc-1.20.1-forge"
+game_versions = "1.20.1"
+"forge.version" = "1.20.1-47.3.0"
+"forge.minecraft_version_range" = "[1.20.1,1.21)"

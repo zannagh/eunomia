@@ -1,9 +1,9 @@
 # Eunomia networking
 
 A game-version-agnostic, loader-agnostic packet framework. You define a packet as a plain Java class
-and register a handler; Eunomia does the rest — on Fabric, NeoForge and Paper/Bukkit/Purpur, from
-Minecraft 1.20.1 to 26.x, with **no Fabric API dependency** and no `CustomPacketPayload`/`StreamCodec`
-boilerplate in your code.
+and register a handler; Eunomia does the rest — on Fabric, NeoForge, classic Forge (1.20.1 only, see
+[below](#classic-forge-1201-only)) and Paper/Bukkit/Purpur, from Minecraft 1.20.1 to 26.x, with **no
+Fabric API dependency** and no `CustomPacketPayload`/`StreamCodec` boilerplate in your code.
 
 ## Define a packet
 
@@ -234,7 +234,7 @@ callback that never fires.
                                      the handshake, the example packets. One artifact, every version.
   │
   ├── :common / :fabric / :neoforge  loader adapter: EunomiaPayload + StreamCodec, the payload-packet
-  │                                  codec-injection mixins, the dispatch mixins, MC transports.
+  │   / :forge (1.20.1 only)          codec-injection mixins, the dispatch mixins, MC transports.
   │
   └── :paper                         Bukkit plugin: plugin-messaging transport, force-subscribe on
                                      join, reusing :core for the exact same definitions + resolution.
@@ -248,6 +248,57 @@ client whose MC server lacks the mod can be pointed at it instead.
 
 One wire format everywhere (`PayloadCodec` = `gzip(json)`), so a payload a Fabric client puts on the
 wire is byte-for-byte what the Paper plugin decodes.
+
+## Classic Forge (1.20.1 only)
+
+Classic Forge (LexForge, the `net.minecraftforge` 47.x line) is supported **for Minecraft 1.20.1 and
+nothing else, by design**. 1.20.1 is the last release where classic Forge is the loader people
+actually run; everything from 1.20.2 upward is covered by the NeoForge variants. There will be no
+`forge-1.21.x`: `versions.json5` pins the `forge` branch to a single entry and
+`stonecutter.properties.toml` gives it its own `display_version`.
+
+**Networking needs no Forge-specific code.** Forge 1.20.1 patches
+`ServerGamePacketListenerImpl#handleCustomPayload` only by *adding* a `NetworkHooks.onCustomPayload`
+call, which no-ops for channels no Forge network channel claims. Vanilla's body on 1.20.1 is empty,
+so Eunomia's existing `< 1.20.5` vanilla-class dispatch mixins (`ServerPlayNetworkHandlerMixin` /
+`ClientboundCustomPayloadPacketMixin`) inject at `HEAD`, decode the `FriendlyByteBuf` themselves and
+cancel — exactly as they do on Fabric 1.20.1. Same wire format, same handlers, no adapter.
+
+Two consequences of running on the 1.20.x transport are worth knowing:
+
+- **Serverbound handlers run on the netty IO thread on 1.20.x**, on every loader. Vanilla 1.20.1's
+  `handleCustomPayload` body is empty, so it carries no `PacketUtils.ensureRunningOnSameThread`
+  guard to inject after, and `LoaderNetwork.dispatchLegacyServerbound` calls the handler inline. From
+  1.20.5 on, `ServerGamePacketListenerMixin` hops via `server.execute(..)` first. A handler that
+  touches world/server state on a 1.20.x server must therefore do its own
+  `context.server().execute(..)`. This is pre-existing and loader-independent — it is not a Forge
+  regression.
+- **The inbound buffer is consumed synchronously.** `dispatchLegacyServerbound` copies the readable
+  bytes into a `byte[]` before it decodes or dispatches anything, which is what Forge's server-side
+  `ICustomPacket#getInternalData()` requires: it hands out the *live* buffer and releases it as soon
+  as the listener call returns.
+
+**MixinExtras is deliberately `compileOnly` on Forge.** Fabric Loader and NeoForge both ship
+MixinExtras; classic Forge 1.20.1 ships neither the library nor a bootstrap for it. Exactly one class
+uses it — the dev-only `client.mixins.DevSkinMixin` — and `EunomiaClientMixinPlugin` only registers
+that mixin when the process looks like a development launch (`fabric.development`, or the dev-skin
+system properties the Fabric/NeoForge run configs pass). A Forge run sets none of them, so the class
+is never loaded and the absent runtime library is never reached. **If `DevSkinMixin` ever becomes
+reachable on a Forge runtime, `compileOnly` becomes a lie** and `forge/build.gradle.kts` must switch
+to a bundled (jar-in-jar) `mixinextras-forge` plus a `MixinExtrasBootstrap.init()` call.
+
+Three more Forge-only build details, all in `forge/`:
+
+- `MixinConfigs` is stamped onto the jar manifest (`forge/build.gradle.kts`): a 1.20.1 `mods.toml`
+  has no `[[mixins]]` section, so that manifest attribute is how Forge finds the configs. The Mixin
+  annotation processor is wired explicitly too, so the reobfuscated jar ships an SRG
+  `eunomia.refmap.json` — without it every `@Inject` written against Mojang names silently fails to
+  resolve in production.
+- `forge/src/main/resources/pack.mcmeta` exists only here. Fabric Loader and NeoForge synthesise one
+  for a mod that has none; classic Forge does not, and logs `Missing metadata in pack mod:eunomia`.
+- `displayTest="IGNORE_ALL_VERSION"` in `mods.toml`. A client carrying Eunomia must stay able to join
+  a server without it — that is the entire point of the capability handshake — so the version
+  mismatch must not become a red X on the server list before the handshake can run.
 
 ## Tests
 

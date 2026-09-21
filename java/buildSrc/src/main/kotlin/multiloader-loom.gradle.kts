@@ -33,12 +33,23 @@ repositories {
     maven("https://api.modrinth.com/maven") {
         content { includeGroup("maven.modrinth") }
     }
+    // Classic-Forge variants only: the compileOnly fmlloader/mergetool artifacts the common branch
+    // needs (see the common-branch dependencies below). Scoped to the group so it is never consulted
+    // for anything else.
+    if (sc.current.project.startsWith("forge")) {
+        maven("https://maven.minecraftforge.net/") {
+            content { includeGroup("net.minecraftforge") }
+        }
+    }
 }
 
 // ── Stonecutter constants ──
 with(sc) {
     constants["fabric"] = current.project.contains("fabric")
     constants["neoforge"] = current.project.contains("neoforge")
+    // `startsWith`, NOT `contains`: "neoforge-1.21.1".contains("forge") is true, so a contains-test
+    // here would switch `//? if forge` on for every NeoForge variant of the common branch.
+    constants["forge"] = current.project.startsWith("forge")
     // `fcgt` gates the FCGT (fabric-client-gametest-api-v1) networking smoke: on for Fabric variants
     // that pin `fabricapi.semver` (currently fabric-26.2), off everywhere else so the test class and
     // its entrypoint stay commented out where the module is not available.
@@ -58,6 +69,27 @@ if (branch == "common") {
             add("modCompileOnly", "net.fabricmc:fabric-loader:${property("loader_version")}")
         }
         add("compileOnly", "org.jspecify:jspecify:1.0.0")
+        // Classic-Forge variant of the COMMON branch only. :common is built by loom on every branch
+        // (it is the shared, loader-neutral source set), so on `forge-1.20.1` it has Minecraft but no
+        // Forge on its classpath - while its own `//? if forge` blocks DO resolve, because the
+        // `forge` stonecutter constant is set from the project name. Exactly one class is affected,
+        // client/EunomiaClientMixinPlugin, which needs `Dist` + `FMLEnvironment` to answer
+        // "am I a physical client?" without a loader API. Without these two the :common:forge-1.20.1
+        // project cannot compile at all - which matters because that project (not :forge:forge-1.20.1)
+        // is what publishes the `eunomia-common` maven artifact for Forge.
+        //
+        // compileOnly and never bundled: at runtime the classes come from Forge itself. Split across
+        // two artifacts because that is where Forge 1.20.1 keeps them - FMLEnvironment in fmlloader,
+        // the `net.minecraftforge.api.distmarker` annotations in mergetool's `api` classifier.
+        if (sc.current.project.startsWith("forge")) {
+            val forgeVersion = findProperty("forge.version")?.toString()
+                ?: error("No forge.version for ${sc.current.project}")
+            // Non-transitive on purpose: these are needed for two class references, and their full
+            // dependency graphs (modlauncher, securejarhandler, ...) live on repositories this build
+            // deliberately does not open up.
+            add("compileOnly", "net.minecraftforge:fmlloader:$forgeVersion") { isTransitive = false }
+            add("compileOnly", "net.minecraftforge:mergetool:1.1.7:api") { isTransitive = false }
+        }
         // LuckPerms API - compileOnly and NEVER bundled/shaded: on a server running LuckPerms the
         // classes come from LuckPerms itself, and on one that does not, the only class referencing
         // them (LuckPermsHook) is never loaded because the CompatManager probe gates it.

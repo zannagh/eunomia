@@ -1,5 +1,9 @@
 package de.zannagh.eunomia.client;
 
+//? if forge {
+/*import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.fml.loading.FMLEnvironment;
+*///?}
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -20,13 +24,35 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
     public void onLoad(String mixinPackage) {
     }
 
+    /**
+     * Returns {@code null}, never {@code ""}.
+     *
+     * <p>Mixin only consults this method when the config JSON carries no {@code "refmap"} field
+     * (see {@code MixinConfig.onSelect}: {@code refMapperConfig} is read from the JSON first and the
+     * plugin is asked only if it is still null). A NON-null return is then used verbatim as the
+     * resource path handed to {@code ReferenceMapper.read}. Returning {@code ""} therefore does not
+     * mean "no preference" - it means "read the refmap from the resource named <empty string>",
+     * which never resolves, silently yields {@code ReferenceMapper.DEFAULT_MAPPER}, and leaves every
+     * obfuscated target unmapped. On Fabric/NeoForge (Mojang-mapped at runtime) that is invisible;
+     * in a REOBFUSCATED classic-Forge jar it makes every injection fail to resolve while dev runs
+     * stay green.</p>
+     *
+     * <p>{@code null} is the correct "I have no opinion" answer: Mixin then falls back to
+     * {@code ReferenceMapper.DEFAULT_RESOURCE} AND sets its suppress-warning flag, so the absence of
+     * a refmap in a deobfuscated dev run stays quiet.</p>
+     */
     @Override
     public String getRefMapperConfig() {
-        return "";
+        return null;
     }
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        //? if forge {
+        /*if (!eunomia$isPhysicalClient()) {
+            return false;
+        }
+        *///?}
         // The networking client mixins, the generic screen-transformation hook, and the dev-tooling
         // hooks must apply. Other dynamically-listed mixins keep whatever gate they had (DevSkin stays
         // off until it is wired up).
@@ -57,9 +83,35 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
                 || System.getProperty("armorhider.dev.skin.textures") != null;
     }
 
+    // Whether this JVM is a physical client, on the one loader that needs to ask.
+    //
+    // Fabric and NeoForge both let a mixin config declare its side, so their dedicated servers never
+    // register this config at all. Classic Forge 1.20.1 cannot: the config is picked up from the
+    // `MixinConfigs` MANIFEST attribute, which has no side field, so it loads on a dedicated server
+    // too - and ui.ScreenMixin targets a class extending AbstractContainerEventHandler, which is not
+    // on a server's classpath. Mixin would fail to load the mixin class and abort the server at boot.
+    //
+    // Gating here is enough to make the whole config inert, because eunomia.client.mixins.json
+    // declares NO static `mixins` array - every entry comes from getMixins() below, so an empty list
+    // leaves nothing to apply.
+    //
+    // Written as a line comment rather than javadoc on purpose: the body below sits inside a
+    // stonecutter `/* ... *``/` block on every non-Forge variant, and a javadoc's terminator would
+    // close that block early.
+    //? if forge {
+    /*private static boolean eunomia$isPhysicalClient() {
+        return FMLEnvironment.dist == Dist.CLIENT;
+    }
+    *///?}
+
     @Override
     public List<String> getMixins() {
         List<String> mixins = new ArrayList<>();
+        //? if forge {
+        /*if (!eunomia$isPhysicalClient()) {
+            return mixins;
+        }
+        *///?}
         // Dev-only tooling, and ONLY ever added in a development environment. Shipping these to users
         // bought nothing - they are inert without the dev properties that drive them - and cost a boot
         // crash: DevSkinMixin's `get` target does not resolve on a production NeoForge runtime
