@@ -186,3 +186,19 @@ fabricapi.semver = "0.159.4+26.3"
 ["neoforge-26.3"]
 "neoforge.version" = "26.3.0.1-beta"
 "neoforge.minecraft_version_range" = "[26.3]"
+
+# ── Forge (classic / LexForge) ────────────────────────────────────────────────
+#
+# 1.20.1 ONLY. Forge 47.x is a 1.20.1-exclusive line - unlike the Fabric variant for the same MC
+# version it does NOT also run on 1.20, so `game_versions` is the single version and deliberately
+# NOT the "1.20,1.20.1" pair from the shared ["1.20.1"] section above.
+#
+# display_version likewise overrides the shared one. Both loaders' jars are published under
+# `archives_base_name-<loader>-<semVer>+<display_version>`, and fabric-1.20.1 already claims
+# "mc-1.20.0-1"; without a distinct display here the staging/versions.json key would collide with
+# the Fabric row and stageArtifacts would report conflicting game_versions for the same display key.
+["forge-1.20.1"]
+display_version = "mc-1.20.1-forge"
+game_versions = "1.20.1"
+"forge.version" = "1.20.1-47.3.0"
+"forge.minecraft_version_range" = "[1.20.1,1.21)"

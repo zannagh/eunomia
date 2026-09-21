@@ -11,9 +11,16 @@
 # (the `publish-common` job below). Before that job existed only the default active variant (26.2) was
 # ever published, which left a consumer unable to resolve eunomia-common on any other game version.
 #
-# The matrix runs the FABRIC variant of each game version only: the common jar is loader-agnostic, and
-# fabric-X / neoforge-X share a display_version, so publishing both would just write the same
-# coordinate twice. A NeoForge consumer resolves the fabric-built jar and compiles against it fine.
+# The coordinate is `<semVer>+<display_version>`, so the matrix must contain each display_version
+# EXACTLY ONCE. fabric-X and neoforge-X share a display_version, so only the FABRIC variant of each
+# game version is listed: the common jar is loader-agnostic and a NeoForge consumer resolves the
+# fabric-built jar and compiles against it fine.
+#
+# forge-1.20.1 is the one exception and IS listed. Classic Forge deliberately overrides
+# display_version to "mc-1.20.1-forge" (see stonecutter.properties.toml) rather than sharing
+# fabric-1.20.1's "mc-1.20.0-1", because its jar is genuinely different - it is built against Forge
+# 47.x with Mixin 0.8.5 rather than against Fabric - so it claims its own coordinate and collides
+# with nothing.
 
 name: Publish (Maven)
 
@@ -104,7 +111,8 @@ jobs:
       # self-hosted runner without serialising the whole matrix.
       max-parallel: 3
       matrix:
-        # One entry per display_version (see stonecutter.properties.toml). Fabric only - see header.
+        # One entry per display_version (see stonecutter.properties.toml). Fabric only, plus the
+        # classic-Forge variant that owns its own display_version - see header.
         variant:
           - fabric-1.20.1
           - fabric-1.21.1
@@ -117,6 +125,9 @@ jobs:
           - fabric-26.1.2
           - fabric-26.2
           - fabric-26.3
+          # Classic Forge (LexForge), 1.20.1 only - NeoForge covers 1.20.2+. Publishes
+          # eunomia-common:<semVer>+mc-1.20.1-forge.
+          - forge-1.20.1
     defaults:
       run:
         shell: bash

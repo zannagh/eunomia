@@ -1,7 +1,7 @@
 package de.zannagh.eunomia.mixins;
 //? if !fabric || < 26.1-0.snapshot.11 {
-/*
-public class PackRepositoryMixin {
+
+/*public class PackRepositoryMixin {
 }
 *///?}
 //? if fabric && >= 26.1-0.snapshot.11 {

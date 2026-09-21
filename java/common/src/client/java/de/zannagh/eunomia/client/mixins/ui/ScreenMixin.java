@@ -59,8 +59,8 @@ public abstract class ScreenMixin extends AbstractContainerEventHandler implemen
             method = "extractRenderState",
             //?}
             //? if < 26.1-1.pre.1 {
-            /*method = "render",*/
-            //?}
+            /*method = "render",
+            *///?}
             at = @At("HEAD"),
             cancellable = true
     )

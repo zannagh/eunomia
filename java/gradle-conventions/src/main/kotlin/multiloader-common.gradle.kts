@@ -41,6 +41,10 @@ val sc = project.stonecutterBuild
 val loader = sc.branch.id
 sc.constants["fabric"] = sc.current.project.contains("fabric")
 sc.constants["neoforge"] = sc.current.project.contains("neoforge")
+// `startsWith`, NOT `contains`: every neoforge-* project name CONTAINS "forge", so a
+// `contains("forge")` test would light this constant up on all ten NeoForge variants and make
+// `//? if forge` blocks compile into them.
+sc.constants["forge"] = sc.current.project.startsWith("forge")
 
 // Register the MC version part as a property tag so version-shared sections
 // in stonecutter.properties.toml (e.g. ["1.20.1"]) resolve correctly.

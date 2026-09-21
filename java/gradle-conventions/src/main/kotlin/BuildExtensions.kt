@@ -20,6 +20,39 @@ class ExpandPropertiesAction(private val props: Map<String, Any>) : Action<FileC
     }
 }
 
+/**
+ * Stamps a `"refmap": "<name>"` entry into a mixin config as it is copied by `processResources`.
+ *
+ * Classic Forge ships a REOBFUSCATED jar, so every `@Inject`/`@Shadow` target written against Mojang
+ * names has to be translated to SRG at runtime - that translation table is the refmap the Mixin
+ * annotation processor generates. Mixin only reads it if the config JSON names it, and the shared
+ * `*.mixins.json` under :common deliberately carries no `refmap` field (Fabric remaps mixins
+ * statically and wants none). Injecting it here keeps the shared source clean while the Forge copy
+ * gets the field it needs.
+ *
+ * Inserted directly above the `"required"` line, which every eunomia mixin config opens with, and
+ * skipped entirely if a `"refmap"` is already present so the action stays idempotent.
+ */
+class InjectMixinRefmapAction(private val refmap: String) : Action<FileCopyDetails>, Serializable {
+    override fun execute(details: FileCopyDetails) {
+        var injected = false
+        details.filter { line: String ->
+            when {
+                line.contains("\"refmap\"") -> {
+                    injected = true
+                    line
+                }
+                !injected && line.trimStart().startsWith("\"required\"") -> {
+                    injected = true
+                    val indent = line.takeWhile { it == ' ' }
+                    "$indent\"refmap\": \"$refmap\",\n$line"
+                }
+                else -> line
+            }
+        }
+    }
+}
+
 fun Jar.includeLicense(archivesName: String) {
     from("LICENSE") {
         rename("LICENSE", "LICENSE_$archivesName")
