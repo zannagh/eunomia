@@ -164,11 +164,23 @@ jobs:
         with:
           gradlew-path: "./java/gradlew"
 
-      - name: Cache NeoForge NFRT Artifacts
+      # Both moddev-gradle loaders (NeoForge and classic Forge) provision their Minecraft artifacts
+      # through NFRT into <variant>/build/moddev/artifacts, so BOTH trees are cached - the forge tree
+      # alone is ~91 MB and was previously re-provisioned on every run.
+      #
+      # The key must hash files that actually exist AND change when the toolchain does. The former key
+      # hashed java/neoforge/versions/*/gradle.properties, which is not a path this repo has (per-variant
+      # config lives in stonecutter.properties.toml), so hashFiles returned "" and the key was the
+      # constant nfrt-<os>- : frozen at the first save and never invalidated on a loader-version bump.
+      - name: Cache NeoForge/Forge NFRT Artifacts
         uses: actions/cache@v6
         with:
-          path: java/neoforge/versions/*/build/moddev/artifacts/
-          key: nfrt-${{ runner.os }}-${{ hashFiles('java/neoforge/versions/*/gradle.properties') }}
+          path: |
+            java/neoforge/versions/*/build/moddev/artifacts/
+            java/forge/versions/*/build/moddev/artifacts/
+          key: nfrt-${{ runner.os }}-${{ hashFiles('java/stonecutter.properties.toml', 'java/stonecutter.gradle.kts') }}
+          restore-keys: |
+            nfrt-${{ runner.os }}-
 
       - name: Build & Stage Artifacts
         run: |
