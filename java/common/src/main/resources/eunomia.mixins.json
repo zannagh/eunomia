@@ -3,9 +3,6 @@
   "package": "de.zannagh.eunomia.mixins",
   "compatibilityLevel": "JAVA_17",
   "plugin": "de.zannagh.eunomia.EunomiaMixinPlugin",
-  "injectors": {
-    "defaultRequire": 1
-  },
   "mixins": [
     "networking.ServerPlayNetworkHandlerMixin",
     "networking.PlayerListMixin",

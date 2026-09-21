@@ -44,10 +44,32 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
     public void acceptTargets(Set<String> myTargets, Set<String> otherTargets) {
     }
 
+    /**
+     * Whether this is a development launch, and therefore whether the dev-only mixins above may be
+     * registered at all. Deliberately property-based rather than loader-API-based: this class is shared
+     * by both loaders and runs inside the mixin bootstrap, before either loader's API is safe to touch.
+     * {@code fabric.development} is set by Loom (and so by the gametest harness); the skin properties are
+     * what the dev run configs pass, and are the only things DevSkinMixin does anything with.
+     */
+    private static boolean eunomia$isDevelopmentEnvironment() {
+        return Boolean.getBoolean("fabric.development")
+                || System.getProperty("eunomia.dev.skin.textures") != null
+                || System.getProperty("armorhider.dev.skin.textures") != null;
+    }
+
     @Override
     public List<String> getMixins() {
         List<String> mixins = new ArrayList<>();
-        mixins.add("DevSkinMixin");
+        // Dev-only tooling, and ONLY ever added in a development environment. Shipping these to users
+        // bought nothing - they are inert without the dev properties that drive them - and cost a boot
+        // crash: DevSkinMixin's `get` target does not resolve on a production NeoForge runtime
+        // ("No refMap loaded", this build emits none), which was survivable while a non-matching
+        // injector was a silent no-op and fatal the moment injectors.defaultRequire was raised.
+        // WindowFocusMixin below is the same kind of thing and the same hazard, one place further down
+        // the list. Gate the lot: production must not load a mixin that only a developer needs.
+        if (eunomia$isDevelopmentEnvironment()) {
+            mixins.add("DevSkinMixin");
+        }
         // The game-version-agnostic screen-transformation hook (registry in client.ui).
         mixins.add("ui.ScreenMixin");
         // Its init-time counterpart: the hook that lets a registered ScreenInitializer add a real,
@@ -64,12 +86,14 @@ public class EunomiaClientMixinPlugin implements IMixinConfigPlugin {
         // Upper bound 26.3-0.alpha.1 (not .snapshot.2): "pre" sorts before "snapshot" in stonecutter's
         // prerelease comparison, so the active 26.3-0.pre.2 must be excluded via an alpha sentinel that
         // precedes every real 26.3 prerelease. Kept identical to WindowFocusMixin's own file gate.
-        //? if >= 26.1-0.snapshot.10 && < 26.3-0.alpha.1 {
-        mixins.add("devtools.WindowFocusMixin");
-        //?}
-        //? if < 26.1-0.snapshot.10 {
-        /*mixins.add("devtools.LegacyWindowFocusMixin");
-        *///?}
+        if (eunomia$isDevelopmentEnvironment()) {
+            //? if >= 26.1-0.snapshot.10 && < 26.3-0.alpha.1 {
+            mixins.add("devtools.WindowFocusMixin");
+            //?}
+            //? if < 26.1-0.snapshot.10 {
+            /*mixins.add("devtools.LegacyWindowFocusMixin");
+            *///?}
+        }
         //? if >= 1.20.5 {
         mixins.add("networking.ClientPacketListenerMixin");
         //?}
