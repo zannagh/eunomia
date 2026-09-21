@@ -79,6 +79,13 @@ public final class McServerTransport implements ServerTransport {
     }
 
     static <T> void send(ServerPlayer player, PacketType<T> type, T data) {
+        // The single chokepoint for every server -> client send (reply, sendToPlayer, broadcast and
+        // broadcastExcept all land here), which is why the loader veto is applied at this line and not at
+        // each caller. A refused channel must be DROPPED: handing it to the connection anyway is what
+        // produced the EncoderException/ClassCastException on the netty thread under NeoForge.
+        if (!LoaderNetwork.canSend(type)) {
+            return;
+        }
         //? if >= 1.20.5 {
         player.connection.send(new ClientboundCustomPayloadPacket(LoaderNetwork.wrap(type, data)));
         //?}

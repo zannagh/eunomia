@@ -110,7 +110,26 @@ public final class CommunicationManager {
 
     // ── Registration (mod-facing) ───────────────────────────────────────────────────────────────
 
-    /** Declares a packet so the platform builds its channel/codec. Idempotent. */
+    /**
+     * Declares a packet so the platform builds its channel/codec. Idempotent.
+     *
+     * <p><strong>Declare every channel during mod initialisation.</strong> This is a hard requirement on
+     * NeoForge, not a style preference: NeoForge wires channels through its {@code PayloadRegistrar}, which
+     * closes for good once mod loading completes. A channel first declared after that point can never be put
+     * on the wire - eunomia will log it once and drop the packets rather than let NeoForge's encoder throw on
+     * the netty thread and kill the connection. Fabric and Paper have no such window, so a late declaration
+     * there merely works; write the code that works on all three.</p>
+     *
+     * <p>{@link #onServerReceive} and {@link #onClientReceive} declare the channel for you, so a channel you
+     * <em>receive</em> on is covered automatically. THIS method is the one to call for a channel you only ever
+     * <em>send</em> on - a server-to-client notification, say - because nothing else in your wiring names it.
+     * Call it from your mod constructor / initializer or a setup event:</p>
+     *
+     * <pre>{@code
+     * // send-only, server -> client: nothing registers a handler for it, so declare it explicitly
+     * CommunicationManager.register(MyPackets.PERMISSION);
+     * }</pre>
+     */
     public static <T> PacketType<T> register(PacketType<T> type) {
         PacketType<?> previous = TYPES.putIfAbsent(type.channelKey(), type);
         if (previous == null) {

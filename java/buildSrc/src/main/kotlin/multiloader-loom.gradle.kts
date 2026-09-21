@@ -170,6 +170,7 @@ if (branch == "fabric") {
         add("networking" to "de.zannagh.eunomia.smoke.NetworkingSmokeTest")
         add("settings-ui" to "de.zannagh.eunomia.smoke.SettingsUiSmokeTest")
         add("toasts" to "de.zannagh.eunomia.smoke.ToastSmokeTest")
+        add("dedicated" to "de.zannagh.eunomia.smoke.DedicatedServerSmokeTest")
     }
 
     // `runClientGametest` runs EVERY registered entrypoint in ONE client launch, so an unrelated

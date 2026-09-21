@@ -80,6 +80,12 @@ public final class ServerSettingsClient {
         registered = true;
         CommunicationManager.onClientReceive(AdminPackets.SERVER_SETTINGS,
                 (payload, context) -> complete(payload));
+        // The two channels this class SENDS on. On a physical client eunomia's server half also declares them
+        // (it receives them), but that is a coincidence of the client running both halves - a client-only
+        // consumer would be left with two channels first seen at send time, which NeoForge's payload
+        // registrar has by then stopped accepting. Declared here so init() alone is sufficient.
+        CommunicationManager.register(AdminPackets.SERVER_SETTINGS_REQUEST);
+        CommunicationManager.register(AdminPackets.SERVER_SETTINGS_WRITE);
     }
 
     /**

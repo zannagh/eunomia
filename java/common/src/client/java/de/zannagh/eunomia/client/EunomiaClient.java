@@ -53,6 +53,11 @@ public final class EunomiaClient {
         // relay after the probe resolves if the server lacks Eunomia and the fallback is opted in + reachable).
         ClientTransportSelector.init();
         ExampleClientHandlers.register();
+        // Declare the admin settings channels now rather than on the first screen open. request()/submit()
+        // call this themselves, but by then mod loading is long over - and on NeoForge a channel declared
+        // after that point cannot be wired into the network, so the admin panel would silently never reach
+        // the server.
+        ServerSettingsClient.init();
 
         // Capability handshake: probe the server on join, and if no ACK arrives, conclude it does not
         // run Eunomia - the point where a consuming mod would offer a custom communications server.

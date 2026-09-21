@@ -5,6 +5,13 @@ plugins {
 
 val sc = project.stonecutterBuild
 
+// :core must be evaluated before its source sets can be read below.
+evaluationDependsOn(":core")
+val coreSourceSets = project(":core").extensions.getByType(SourceSetContainer::class.java)
+// Hoisted out of the `neoForge { runs { .. } }` block on purpose: inside a RunModel the `project(..)`
+// accessor is the dependency factory (RunModel implements Dependencies), not Project.
+val coreClasses = project(":core").tasks.named("classes")
+
 val neoforgeVersion = findProperty("neoforge.version")?.toString()
     ?: error("No neoforge.version for ${sc.current.project}")
 val neoforgeVersionRange = findProperty("neoforge.minecraft_version_range")?.toString()
@@ -50,6 +57,16 @@ neoForge {
         register("client") {
             client()
             taskBefore(expandResourcesForIdea)
+            // Verification affordance: -Peunomia.dev.quickplay=<host:port> makes the dev client
+            // connect straight to that server instead of stopping at the title screen. NeoForge has
+            // no client-gametest harness (FCGT is Fabric-only), so this is the only way a real
+            // NeoForge client<->server handshake gets exercised at all - which is exactly how a
+            // whole-transport no-op shipped undetected. See NeoForgePayloadRegistration.
+            findProperty("eunomia.dev.quickplay")?.toString()?.let { target ->
+                programArguments.addAll("--quickPlayMultiplayer", target)
+            }
+            // :core is part of the dev mod (see `mods` below), so its classes must exist before launch.
+            taskBefore(coreClasses)
             // Dev skin: launch the dev client as the dev-profile account (and its resolved skin)
             // when dev-profile.properties supplies a username; absent profile = normal offline client.
             if (devProfile != null) {
@@ -65,6 +82,7 @@ neoForge {
         register("server") {
             server()
             taskBefore(expandResourcesForIdea)
+            taskBefore(coreClasses)
         }
     }
 
@@ -72,6 +90,13 @@ neoForge {
         register("eunomia") {
             sourceSet(sourceSets.main.get())
             sourceSet(clientSourceSet)
+            // :core is the MC-free networking/configuration library. The shipped jar gets it by shading
+            // (see multiloader-loader.gradle.kts's `jar` block), but a dev run loads the mod from these
+            // source-set output folders instead, and a mod may only see classes that are part of ITS mod
+            // - so without this, `runServer`/`runClient` died at boot with
+            // NoClassDefFoundError: de/zannagh/eunomia/configuration/ConfigurationProvider even though
+            // multiloader-common puts :core on the ordinary implementation classpath.
+            sourceSet(coreSourceSets["main"])
         }
     }
 }

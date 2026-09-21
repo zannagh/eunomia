@@ -30,6 +30,10 @@ public final class ExampleServerHandlers {
         ExampleReplication.enableServer();
 
         // On join, tell the client its permission level (mirrors the classic Armor Hider handshake).
+        // PERMISSION is send-only from the server, so it must be declared HERE rather than discovered on the
+        // first send: NeoForge's payload registrar has closed by the time a player joins, and a channel that
+        // misses it cannot be put on the wire at all.
+        CommunicationManager.register(ExamplePackets.PERMISSION);
         ServerConnectionEvents.registerJoin(new ServerConnectionEventConsumer() {
             @Override
             public void acceptPlayerJoin(MinecraftServer server, ServerPlayer player) {

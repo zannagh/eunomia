@@ -25,7 +25,10 @@ import java.util.Set;
  * {@code fabric-1.20.1} the class does not exist at all - naming it in the static array crashed the
  * game at boot. They are added here behind the identical gate instead.</p>
  *
- * <p>CONTRACT: every guard below must stay identical to the stonecutter gate on the file it names.</p>
+ * <p>CONTRACT: every guard below must stay identical to the stonecutter gate on the file it names, with
+ * one deliberate exception: the three payload-networking mixins additionally carry a {@code fabric} guard
+ * that their files do not, because on NeoForge they are replaced wholesale by
+ * {@code NeoForgePayloadRegistration} rather than being absent. See the comment on that block.</p>
  */
 public class EunomiaMixinPlugin implements IMixinConfigPlugin {
 
@@ -68,7 +71,19 @@ public class EunomiaMixinPlugin implements IMixinConfigPlugin {
         // (statically listed, ungated at class level) carries the pre-payload FriendlyByteBuf path
         // and is inert on 1.20.5+, exactly mirroring the client-side
         // ClientPacketListenerMixin / ClientPlayNetworkHandlerMixin split.
-        //? if >= 1.20.5 {
+        //
+        // FABRIC ONLY, and not by preference: the first two inject eunomia's codecs by @ModifyArg into the
+        // call to CustomPacketPayload.codec(FallbackProvider, List) in the vanilla payload packets'
+        // <clinit>. NeoForge PATCHES that method to four parameters (FallbackProvider, List,
+        // ConnectionProtocol, PacketFlow) - the two-argument overload does not exist in its patched jar, so
+        // the injector matches nothing. The third one then has no eunomia payload to dispatch, because
+        // nothing decoded one. On NeoForge all three are replaced by NeoForgePayloadRegistration, which
+        // registers the very same types and codecs through NeoForge's own PayloadRegistrar.
+        //
+        // Registering them on NeoForge anyway is not merely useless: eunomia.mixins.json now sets
+        // injectors.defaultRequire = 1, so a non-matching injector aborts the game instead of failing
+        // silently the way this bug did for its entire lifetime.
+        //? if fabric && >= 1.20.5 {
         mixins.add("networking.ClientboundCustomPayloadPacketMixin");
         mixins.add("networking.ServerboundCustomPayloadPacketMixin");
         mixins.add("networking.ServerGamePacketListenerMixin");

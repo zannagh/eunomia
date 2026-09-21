@@ -20,6 +20,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Routes inbound Eunomia payloads to the {@link CommunicationManager} on the client (1.20.5+), and
  * fires the client-join event once login finishes. Client custom-payload handling already runs on
  * the client thread, so the handler is invoked inline.
+ *
+ * <p>Only the payload dispatch is Fabric-only (see its own comment); the login/close injects target plain
+ * vanilla methods and are live on both loaders.</p>
  */
 @Mixin(ClientPacketListener.class)
 public abstract class ClientPacketListenerMixin extends ClientCommonPacketListenerImpl {
@@ -28,6 +31,18 @@ public abstract class ClientPacketListenerMixin extends ClientCommonPacketListen
         super(minecraft, connection, commonListenerCookie);
     }
 
+    //? if fabric {
+    /**
+     * Clientbound dispatch - FABRIC ONLY.
+     *
+     * <p>On NeoForge the payload never arrives as an {@code EunomiaPayload} here at all: the codec that
+     * would decode it is injected by {@code Clientbound/ServerboundCustomPayloadPacketMixin}, whose
+     * {@code @ModifyArg} cannot match NeoForge's patched four-argument
+     * {@code CustomPacketPayload.codec(..)}. NeoForge does both the decoding and this dispatch through
+     * {@code NeoForgePayloadRegistration}, so gating only this inject - rather than the whole class -
+     * keeps the two vanilla-method injects below alive on both loaders, where they still drive the
+     * connection lifecycle and the capability probe.</p>
+     */
     @Inject(method = "handleCustomPayload", at = @At("HEAD"), cancellable = true)
     private void eunomia$onHandleCustomPayload(CustomPacketPayload payload, CallbackInfo ci) {
         if (!(payload instanceof EunomiaPayload eunomiaPayload)) {
@@ -44,6 +59,7 @@ public abstract class ClientPacketListenerMixin extends ClientCommonPacketListen
         McClientContext context = new McClientContext((ClientPacketListener) (Object) this, minecraft);
         CommunicationManager.dispatchClientbound(channelKey, eunomiaPayload.data(), context);
     }
+    //?}
 
     /**
      * Fire the client-join event once login finishes, after wiping every scrap of the previous connection's
