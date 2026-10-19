@@ -7,6 +7,24 @@
 # Secrets for the `eunomia` service are passed through from the environment of whoever runs
 # `docker compose` - either your shell (the dotfiles `export-bw-env-vars.sh` exports them from
 # Bitwarden) or a gitignored csharp/.env. See the `eunomia` service's environment block.
+# Every service logs to stdout only, rotated by docker's json-file driver by size, so nothing grows forever. On the
+# production host Grafana Alloy reads these container logs and ships them to Loki, which keeps them across redeploys.
+x-logging-app: &logging-app
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-logging-small: &logging-small
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+x-logging-tiny: &logging-tiny
+  driver: json-file
+  options:
+    max-size: "2m"
+    max-file: "2"
+
 services:
   postgres:
     image: postgres:17
@@ -23,6 +41,7 @@ services:
     volumes:
       - eunomia-pgdata:/var/lib/postgresql/data
     restart: unless-stopped
+    logging: *logging-small
 
   # Not for a public endpoint: DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS drops the login token and
   # OTLP auth so it "just works" on the internal network. Traces/metrics are kept in-memory (a rolling
@@ -35,6 +54,8 @@ services:
       - "18888:18888"   # web UI — open http://localhost:18888
       - "18889:18889"   # OTLP/gRPC ingest
     restart: unless-stopped
+    # The dashboard keeps its telemetry in memory only; this is just its own stdout.
+    logging: *logging-tiny
 
   eunomia:
     # Runs the published image so the deploy-hook can pull newer versions on release. To run a local
@@ -53,6 +74,13 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
       - OTEL_SERVICE_NAME=Eunomia
+      # Log levels per category (see src/Eunomia.Server.Web/Logging/LoggingLevels.cs). Default covers the app's own
+      # Eunomia.* logs; keep it at Information or lower, the per-server dashboard log is fed from Information lines.
+      # ASP.NET Core and EF Core default to Warning; to see them again for a while set e.g. LOG_LEVEL_EF=Information.
+      # Other categories: add Logging__LogLevel__<Category>=<Level> here.
+      - Logging__LogLevel__Default=${LOG_LEVEL:-Information}
+      - Logging__LogLevel__Microsoft.AspNetCore=${LOG_LEVEL_ASPNETCORE:-Warning}
+      - Logging__LogLevel__Microsoft.EntityFrameworkCore=${LOG_LEVEL_EF:-Warning}
       - POSTGRES__HOST=postgres
       - POSTGRES__PORT=5432
       - POSTGRES__DATABASE=eunomia
@@ -88,6 +116,8 @@ services:
       - postgres
       - aspire-dashboard
     restart: unless-stopped
+    # stdout only; on the production host Alloy ships it to Loki.
+    logging: *logging-app
 
   # Receives the GitHub releases/packages webhook and, on a new published image, pulls and recreates
   # the eunomia service. See deploy-hook/ (and deploy-hook/.env.example for the required vars).
@@ -115,6 +145,7 @@ services:
       # identical host paths the daemon expects.
       - ${COMPOSE_DIR}:${COMPOSE_DIR}
     restart: unless-stopped
+    logging: *logging-tiny
 
 volumes:
   eunomia-pgdata:
