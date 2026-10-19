@@ -13,30 +13,37 @@ using Eunomia.Server.Core.Telemetry;
 using Eunomia.Server.Data.DependencyInjection;
 using Eunomia.Server.Data.Logging;
 using Eunomia.Server.Web.Components;
+using Eunomia.Server.Web.Logging;
 using Microsoft.Extensions.Hosting;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
+using Serilog.Sinks.OpenTelemetry;
 
 namespace Eunomia.Server.Web;
 
 public static class EunomiaWebApp
 {
+    /// <summary>
+    /// Full date and level on every console line, so a line read on its own (Loki, grep) is dated, and the host's
+    /// Grafana Alloy pipeline can join exception continuation lines to the line that starts with this prefix and
+    /// extract the level as a label.
+    /// </summary>
+    private const string ConsoleOutputTemplate =
+        "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj}{NewLine}{Exception}";
+
     public static void Main(string[] args)
     {
-        Log.Logger = new LoggerConfiguration()
-            .ReadFrom.Configuration(new ConfigurationBuilder().AddEnvironmentVariables().Build())
-            .WriteTo.Console()
+        IConfiguration bootstrapConfiguration = new ConfigurationBuilder().AddEnvironmentVariables().Build();
+        LoggerConfiguration bootstrap = LoggingLevels.Apply(new LoggerConfiguration(), bootstrapConfiguration);
+        Log.Logger = bootstrap
+            .ReadFrom.Configuration(bootstrapConfiguration)
+            .WriteTo.Console(outputTemplate: ConsoleOutputTemplate)
             .CreateBootstrapLogger();
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
-        builder.Host.UseSerilog((context, services, configuration) => configuration
-            .ReadFrom.Configuration(context.Configuration)
-            .ReadFrom.Services(services)
-            .WriteTo.Console()
-
-            // Dedicated per-server sink: only events carrying the ServerScope property reach it.
-            .WriteToServerScopeLog(services));
+        builder.Host.UseSerilog((context, services, configuration) =>
+            ConfigureLogging(configuration, context.Configuration, services));
 
         ConfigureServices(builder.Services, builder.Configuration, builder.Environment);
 
@@ -47,6 +54,7 @@ public static class EunomiaWebApp
         app.Services.InitializeServerBlocking(isDevelopment);
 
         app.UseWebSockets();
+        app.UseSlowRequestLogging();
         app.UseMiddleware<WebSocketMiddleware>();
         app.UseEunomiaAuthentication();
 
@@ -61,6 +69,52 @@ public static class EunomiaWebApp
         app.MapGet("/health", () => Results.Ok("ok"));
 
         app.Run();
+    }
+
+    /// <summary>
+    /// The OTLP endpoint and service name to ship logs to, or <c>null</c> when <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> is
+    /// unset. The service name falls back to <c>Eunomia</c> when <c>OTEL_SERVICE_NAME</c> is unset.
+    /// </summary>
+    internal static (string Endpoint, string ServiceName)? ResolveOtlpLogExport(IConfiguration configuration)
+    {
+        string? endpoint = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        if (string.IsNullOrEmpty(endpoint))
+        {
+            return null;
+        }
+
+        string serviceName = configuration["OTEL_SERVICE_NAME"] is { Length: > 0 } name ? name : "Eunomia";
+        return (endpoint, serviceName);
+    }
+
+    private static void ConfigureLogging(
+        LoggerConfiguration logger,
+        IConfiguration configuration,
+        IServiceProvider services)
+    {
+        // Levels per category: defaults in LoggingLevels, overridable with Logging__LogLevel__<Category> (env/compose).
+        // ReadFrom.Configuration runs after it, so an explicit Serilog section still wins.
+        LoggingLevels.Apply(logger, configuration)
+            .ReadFrom.Configuration(configuration)
+            .ReadFrom.Services(services)
+
+            // stdout: docker captures it and the host's Grafana Alloy ships the container log to Loki.
+            .WriteTo.Console(outputTemplate: ConsoleOutputTemplate)
+
+            // Dedicated per-server sink: only events carrying the ServerScope property reach it.
+            .WriteToServerScopeLog(services);
+
+        // Ship logs to the OTLP collector (e.g. the Aspire dashboard's Structured Logs view) next to traces and
+        // metrics. Only when an endpoint is configured, so a bare `dotnet run` does not retry a missing collector.
+        if (ResolveOtlpLogExport(configuration) is { } otlp)
+        {
+            logger.WriteTo.OpenTelemetry(options =>
+            {
+                options.Endpoint = otlp.Endpoint;
+                options.Protocol = OtlpProtocol.Grpc;
+                options.ResourceAttributes.Add("service.name", otlp.ServiceName);
+            });
+        }
     }
 
     private static void ConfigureServices(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)

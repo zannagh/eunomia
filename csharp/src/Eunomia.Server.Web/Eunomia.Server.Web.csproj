@@ -10,4 +10,8 @@
     <ProjectReference Include="..\Eunomia.Server.Data\Eunomia.Server.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Eunomia.Server.Tests" />
+  </ItemGroup>
+
 </Project>
