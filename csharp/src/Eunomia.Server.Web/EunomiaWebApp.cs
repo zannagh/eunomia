@@ -71,6 +71,22 @@ public static class EunomiaWebApp
         app.Run();
     }
 
+    /// <summary>
+    /// The OTLP endpoint and service name to ship logs to, or <c>null</c> when <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> is
+    /// unset. The service name falls back to <c>Eunomia</c> when <c>OTEL_SERVICE_NAME</c> is unset.
+    /// </summary>
+    internal static (string Endpoint, string ServiceName)? ResolveOtlpLogExport(IConfiguration configuration)
+    {
+        string? endpoint = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        if (string.IsNullOrEmpty(endpoint))
+        {
+            return null;
+        }
+
+        string serviceName = configuration["OTEL_SERVICE_NAME"] is { Length: > 0 } name ? name : "Eunomia";
+        return (endpoint, serviceName);
+    }
+
     private static void ConfigureLogging(
         LoggerConfiguration logger,
         IConfiguration configuration,
@@ -90,15 +106,13 @@ public static class EunomiaWebApp
 
         // Ship logs to the OTLP collector (e.g. the Aspire dashboard's Structured Logs view) next to traces and
         // metrics. Only when an endpoint is configured, so a bare `dotnet run` does not retry a missing collector.
-        string? otlpEndpoint = configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
-        if (!string.IsNullOrEmpty(otlpEndpoint))
+        if (ResolveOtlpLogExport(configuration) is { } otlp)
         {
-            string serviceName = configuration["OTEL_SERVICE_NAME"] is { Length: > 0 } name ? name : "Eunomia";
             logger.WriteTo.OpenTelemetry(options =>
             {
-                options.Endpoint = otlpEndpoint;
+                options.Endpoint = otlp.Endpoint;
                 options.Protocol = OtlpProtocol.Grpc;
-                options.ResourceAttributes.Add("service.name", serviceName);
+                options.ResourceAttributes.Add("service.name", otlp.ServiceName);
             });
         }
     }

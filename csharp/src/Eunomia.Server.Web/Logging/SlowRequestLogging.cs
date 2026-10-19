@@ -2,6 +2,7 @@
 // See License in the project root for license information.
 
 using System.Diagnostics;
+using Eunomia.Server.Core.Logging;
 
 namespace Eunomia.Server.Web.Logging;
 
@@ -12,32 +13,37 @@ namespace Eunomia.Server.Web.Logging;
 /// </summary>
 public static class SlowRequestLogging
 {
+    public const string Category = "Eunomia.SlowRequests";
+
     public static readonly TimeSpan Threshold = TimeSpan.FromSeconds(1);
 
     public static void UseSlowRequestLogging(this WebApplication app)
     {
-        ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Eunomia.SlowRequests");
-        app.Use(async (context, next) =>
+        ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger(Category);
+        app.Use((context, next) => MeasureAsync(context, next, logger, Threshold));
+    }
+
+    /// <summary>Runs <paramref name="next"/> and logs the request if it took at least <paramref name="threshold"/>.</summary>
+    internal static async Task MeasureAsync(HttpContext context, Func<Task> next, ILogger logger, TimeSpan threshold)
+    {
+        long started = Stopwatch.GetTimestamp();
+        try
         {
-            long started = Stopwatch.GetTimestamp();
-            try
+            await next();
+        }
+        finally
+        {
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+            if (elapsed >= threshold && IsMeasurable(context))
             {
-                await next();
+                logger.LogWarning(
+                    "Slow request: {Method} {Path} -> {Status} in {ElapsedMs} ms",
+                    LogSafe.Value(context.Request.Method),
+                    LogSafe.Value(context.Request.Path.Value),
+                    context.Response.StatusCode,
+                    (long)elapsed.TotalMilliseconds);
             }
-            finally
-            {
-                TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
-                if (elapsed >= Threshold && IsMeasurable(context))
-                {
-                    logger.LogWarning(
-                        "Slow request: {Method} {Path} -> {Status} in {ElapsedMs} ms",
-                        context.Request.Method,
-                        context.Request.Path.Value,
-                        context.Response.StatusCode,
-                        (long)elapsed.TotalMilliseconds);
-                }
-            }
-        });
+        }
     }
 
     // The relay websocket and the dashboard's Blazor circuit (websocket or long polling) legitimately stay open long.

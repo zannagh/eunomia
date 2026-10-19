@@ -50,20 +50,25 @@ public static class LoggingLevels
     public static Dictionary<string, LogEventLevel> Resolve(IConfiguration configuration)
     {
         Dictionary<string, LogEventLevel> levels = Defaults.ToDictionary(d => d.Key, d => d.Value);
-        foreach (IConfigurationSection entry in configuration.GetSection("Logging:LogLevel").GetChildren())
+        IEnumerable<(string Category, LogEventLevel? Level)> configured = configuration
+            .GetSection("Logging:LogLevel")
+            .GetChildren()
+            .Select(entry => (entry.Key, Parse(entry.Value)));
+        foreach ((string category, LogEventLevel? level) in configured.Where(c => c.Level is not null))
         {
-            if (TryParse(entry.Value, out LogEventLevel level))
-            {
-                levels[entry.Key] = level;
-            }
+            levels[category] = level!.Value;
         }
 
         return levels;
     }
 
-    private static bool TryParse(string? value, out LogEventLevel level)
+    /// <summary>
+    /// Maps a Microsoft.Extensions.Logging level name (case-insensitive) to the Serilog level; <c>null</c> for anything
+    /// else, including <c>None</c>.
+    /// </summary>
+    internal static LogEventLevel? Parse(string? value)
     {
-        LogEventLevel? parsed = value?.Trim().ToLowerInvariant() switch
+        return value?.Trim().ToLowerInvariant() switch
         {
             "trace" => LogEventLevel.Verbose,
             "debug" => LogEventLevel.Debug,
@@ -73,7 +78,5 @@ public static class LoggingLevels
             "critical" => LogEventLevel.Fatal,
             _ => null,
         };
-        level = parsed ?? LogEventLevel.Information;
-        return parsed.HasValue;
     }
 }
