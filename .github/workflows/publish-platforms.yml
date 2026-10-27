@@ -33,9 +33,10 @@
 #   experimental push reaches them without touching the manual-release path at all.
 #
 # Scope decisions for eunomia (differs from armor-hider):
-#   - Only the Fabric, NeoForge and classic-Forge loader jars go to the platforms. The Paper plugin is
-#     published to Maven only (it is a library dependency, not a consumer-facing mod), so there is no
-#     Bukkit-plugins or Hangar job here.
+#   - The Fabric, NeoForge and classic-Forge loader jars go to Modrinth and CurseForge. The Paper
+#     plugin (one version-agnostic jar) goes to Modrinth only, with the loaders paper/folia/purpur/
+#     spigot/bukkit, so hosts that read Modrinth see every supported Paper game version. There is no
+#     CurseForge Bukkit-plugins or Hangar job here.
 #   - CurseForge project 1654849 is a Minecraft > Mods project, so Fabric/NeoForge/Forge upload
 #     straight to it.
 #   - Classic Forge (LexForge) is 1.20.1-ONLY by design: Forge 47.x is the last line eunomia targets
@@ -153,6 +154,8 @@ jobs:
       mod_version: ${{ needs.prepare.outputs.mod_version }}
       is_prerelease: ${{ needs.prepare.outputs.is_prerelease }}
       supported_versions: ${{ steps.versions.outputs.matrix }}
+      # Same matrix minus the Paper plugin (Modrinth only).
+      curseforge_versions: ${{ steps.versions.outputs.curseforge_matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -191,15 +194,17 @@ jobs:
       - name: Read Supported Versions
         id: versions
         run: |
-          # Only the Fabric/NeoForge/Forge loader groups are published to the platforms; the
-          # version-agnostic "paper" jar is intentionally excluded (Maven only). The `forge` group holds
-          # exactly one entry (mc-1.20.1-forge) - see the scope note at the top of this file.
+          # The version-agnostic "paper" jar is a single entry {minecraft: "paper", loader: "paper"}; its
+          # game-version list comes from versions.json (.paper.paper, same list the Paper build derives).
+          # The `forge` group holds exactly one entry (mc-1.20.1-forge) - see the scope note at the top.
           MATRIX=$(jq -c '[
             (.fabric // {} | keys[] | {minecraft: ., loader: "fabric"}),
             (.neoforge // {} | keys[] | {minecraft: ., loader: "neoforge"}),
-            (.forge // {} | keys[] | {minecraft: ., loader: "forge"})
+            (.forge // {} | keys[] | {minecraft: ., loader: "forge"}),
+            (.paper // {} | keys[] | {minecraft: ., loader: "paper"})
           ]' staging/versions.json)
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
+          echo "curseforge_matrix=$(jq -c 'map(select(.loader != "paper"))' <<< "$MATRIX")" >> $GITHUB_OUTPUT
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v7
@@ -259,7 +264,7 @@ jobs:
           files: artifacts/**/*.jar
 
   # ============================================================================
-  # PUBLISH TO MODRINTH (Fabric + NeoForge + Forge)
+  # PUBLISH TO MODRINTH (Fabric + NeoForge + Forge + Paper)
   # ============================================================================
   publish-modrinth:
     name: Publish to Modrinth
@@ -319,9 +324,15 @@ jobs:
           name: ${{ steps.modrinth.outputs.version_name }}
           version: ${{ steps.modrinth.outputs.version_number }}
           version-type: ${{ steps.modrinth.outputs.version_type }}
+          # The Paper plugin is pure Bukkit API, so it also covers the Bukkit-derived server platforms
+          # Modrinth models as separate loaders.
           loaders: |
             ${{ matrix.loader }}
             ${{ matrix.loader == 'fabric' && 'quilt' || '' }}
+            ${{ matrix.loader == 'paper' && 'folia' || '' }}
+            ${{ matrix.loader == 'paper' && 'purpur' || '' }}
+            ${{ matrix.loader == 'paper' && 'spigot' || '' }}
+            ${{ matrix.loader == 'paper' && 'bukkit' || '' }}
           game-versions: |
             ${{ steps.game-versions.outputs.list }}
           game-version-filter: any
@@ -349,7 +360,7 @@ jobs:
       # Serialize to avoid the same rate-limit race as Modrinth (see publish-modrinth above).
       max-parallel: 1
       matrix:
-        include: ${{ fromJSON(needs.build.outputs.supported_versions) }}
+        include: ${{ fromJSON(needs.build.outputs.curseforge_versions) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -441,4 +452,4 @@ jobs:
 
             - **Project ID**: `${{ env.CURSEFORGE_PROJECT_ID }}`
             - **Publish Enabled**: `${{ env.PUBLISH_TO_CURSEFORGE }}`
-            - **Note**: Fabric/NeoForge/Forge only - the Paper plugin is published to Maven, not the platforms.
+            - **Note**: Fabric/NeoForge/Forge only - the Paper plugin goes to Modrinth and Maven, not CurseForge.

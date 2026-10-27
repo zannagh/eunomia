@@ -2,8 +2,8 @@ name: Prepare Platform Upload
 description: >
   Finds the correct JAR for a Minecraft version/loader in the staged artifacts and prepares the
   Modrinth/CurseForge version metadata (number, display name, type). Eunomia publishes its Fabric,
-  NeoForge and classic-Forge (1.20.1 only) loader jars to the mod platforms - never the Paper plugin,
-  which is Maven-only.
+  NeoForge and classic-Forge (1.20.1 only) loader jars to the mod platforms, and the version-agnostic
+  Paper plugin (display version "paper") to Modrinth only.
 
 inputs:
   display-version:
@@ -19,7 +19,7 @@ inputs:
     description: Path to the downloaded artifacts directory
     required: true
   loader:
-    description: The mod loader (fabric, neoforge, forge)
+    description: The mod loader (fabric, neoforge, forge, paper)
     required: true
 
 outputs:
@@ -75,12 +75,19 @@ runs:
         case "$LOADER" in
           fabric)   SHORT_LOADER="fab" ;;
           neoforge) SHORT_LOADER="neo" ;;
+          paper)    SHORT_LOADER="ppr" ;;
           *)        SHORT_LOADER="$LOADER" ;;
         esac
         SHORT_MOD_VERSION="${MOD_VERSION//-pre./-p.}"
 
-        VERSION_NUMBER="${SHORT_LOADER}-${DISPLAY_VERSION_SHORT}-${SHORT_MOD_VERSION}"
-        VERSION_NAME="[${LOADER^}] ${DISPLAY_VERSION} - ${MOD_VERSION}"
+        if [[ "$LOADER" == "paper" ]]; then
+          # One version-agnostic server jar (display version "paper"): don't repeat it in the name.
+          VERSION_NUMBER="${SHORT_LOADER}-${SHORT_MOD_VERSION}"
+          VERSION_NAME="[Paper] Plugin - ${MOD_VERSION}"
+        else
+          VERSION_NUMBER="${SHORT_LOADER}-${DISPLAY_VERSION_SHORT}-${SHORT_MOD_VERSION}"
+          VERSION_NAME="[${LOADER^}] ${DISPLAY_VERSION} - ${MOD_VERSION}"
+        fi
 
         if [[ "$IS_PRERELEASE" == "true" ]]; then
           VERSION_TYPE="beta"
