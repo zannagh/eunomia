@@ -18,35 +18,9 @@ env:
   EUNOMIA_BUILD_SCAN_PUBLISH: "true"
 
 jobs:
-  runner-and-version:
-    name: Determine Runner & Get Version
-    runs-on: ubuntu-latest
-    outputs:
-      runner: ${{ steps.pick.outputs.runner }}
-      fullSemVer: ${{ steps.version.outputs.fullSemVer }}
-    steps:
-      - name: Pick a runner
-        id: pick
-        uses: zannagh/versionizer/determine-runner@v1
-        with:
-          # Fine-grained PAT with Administration:read on this repo (lists runners). Missing/invalid
-          # token degrades gracefully to default-runs-on.
-          runner-token: ${{ secrets.RUNNER_TOKEN }}
-          required-labels: 'Linux,X64,build'
-          default-runs-on: 'ubuntu-latest'
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - name: Calculate Version
-        id: version
-        uses: zannagh/versionizer/calculate-version@v1
-
   coverage:
     name: Coverage baseline
-    needs: runner-and-version
-    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
+    runs-on: ${{ (contains(fromJSON('["push","schedule","workflow_dispatch","merge_group"]'), github.event_name) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.RUNS_ON || '{}').coverage || 'ubuntu-latest' }}
     defaults:
       run:
         shell: bash
