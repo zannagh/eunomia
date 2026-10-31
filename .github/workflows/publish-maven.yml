@@ -33,22 +33,12 @@ env:
   EUNOMIA_BUILD_SCAN_PUBLISH: "true"
 
 jobs:
-  runner-and-version:
-    name: Determine Runner & Get Version
+  version:
+    name: Get Version
     runs-on: ubuntu-latest
     outputs:
-      runner: ${{ steps.pick.outputs.runner }}
       fullSemVer: ${{ steps.version.outputs.fullSemVer }}
     steps:
-      - name: Pick a runner
-        id: pick
-        uses: zannagh/versionizer/determine-runner@v1
-        with:
-          # Fine-grained PAT with Administration:read on this repo (lists runners). Missing/invalid
-          # token degrades gracefully to default-runs-on.
-          runner-token: ${{ secrets.RUNNER_TOKEN }}
-          required-labels: 'Linux,X64,build'
-          default-runs-on: 'ubuntu-latest'
       - name: Checkout
         uses: actions/checkout@v7
         with:
@@ -60,8 +50,8 @@ jobs:
 
   publish:
     name: Publish libraries (core, paper, conventions)
-    needs: runner-and-version
-    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
+    needs: version
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -84,7 +74,7 @@ jobs:
       # Explicit project paths: a bare `publish` would also publish whichever common variant happens
       # to be active, duplicating a coordinate the publish-common matrix owns.
       - name: Publish libraries
-        run: ./gradlew :core:publish :paper:publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./gradlew :core:publish :paper:publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,23 +82,23 @@ jobs:
       # Also publish the shared multiloader/stonecutter convention plugins (standalone build) so a
       # consumer can apply the same setup as a resolved plugin instead of copying buildSrc.
       - name: Publish convention plugins
-        run: ./gradlew -p gradle-conventions publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./gradlew -p gradle-conventions publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-common:
     name: Publish eunomia-common (${{ matrix.variant }})
-    needs: runner-and-version
-    runs-on: ${{ fromJSON(needs.runner-and-version.outputs.runner) }}
+    needs: version
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     strategy:
       # One game version's failure must not hide the other ten.
       fail-fast: false
-      # Each variant is a full stonecutter switch plus a compile; three at a time keeps the peak off a
-      # self-hosted runner without serialising the whole matrix.
+      # Each variant is a full stonecutter switch plus a compile; three at a time without serialising
+      # the whole matrix.
       max-parallel: 3
       matrix:
         # One entry per display_version (see stonecutter.properties.toml). Fabric only, plus the
@@ -149,7 +139,7 @@ jobs:
         run: ./gradlew "Set active project to ${{ matrix.variant }}"
 
       - name: Publish eunomia-common
-        run: ./gradlew :common:${{ matrix.variant }}:publish -PsemVer="${{ needs.runner-and-version.outputs.fullSemVer }}"
+        run: ./gradlew :common:${{ matrix.variant }}:publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

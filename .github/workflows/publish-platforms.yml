@@ -89,7 +89,6 @@ jobs:
     name: Prepare Release
     runs-on: ubuntu-latest
     outputs:
-      runner: ${{ steps.prep.outputs.runner }}
       should_release: ${{ steps.prep.outputs.should_release }}
       is_manual_release: ${{ steps.prep.outputs.is_manual_release }}
       is_experimental: ${{ steps.experimental.outputs.value }}
@@ -120,9 +119,6 @@ jobs:
           release-tag-name: ${{ github.event.release.tag_name }}
           release-prerelease: ${{ github.event.release.prerelease }}
           release-body: ${{ github.event.release.body }}
-          # Fine-grained PAT with Administration:read on this repo (lists runners).
-          # Missing/invalid token degrades gracefully to default-runs-on.
-          runner-token: ${{ secrets.RUNNER_TOKEN }}
           modrinth-project-id: ${{ env.MODRINTH_PROJECT_ID }}
           repository: ${{ github.repository }}
 
@@ -143,7 +139,7 @@ jobs:
   build:
     name: Build
     needs: [prepare]
-    runs-on: ${{ fromJSON(needs.prepare.outputs.runner) }}
+    runs-on: ${{ (contains(fromJSON('["push","schedule","workflow_dispatch","merge_group"]'), github.event_name) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.RUNS_ON || '{}').publish-platforms-build || 'ubuntu-latest' }}
     if: "!cancelled() && needs.prepare.result == 'success'"
     defaults:
       run:

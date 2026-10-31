@@ -5,9 +5,6 @@
 # to produce a Cobertura XML report, uploaded to Codecov under the `csharp` flag (kept separate from
 # the `java` flag added to build.yml/coverage.yml - see .github/codecov.yml). This job is informational
 # only; it never fails CI on coverage.
-#
-# ubuntu-latest is used directly here (no self-hosted-runner selection) since the C# job is light
-# enough not to need the self-hosted pool the Gradle builds use.
 
 name: C# CI
 
@@ -32,7 +29,7 @@ permissions:
 jobs:
   test:
     name: Test & Coverage
-    runs-on: ubuntu-latest
+    runs-on: ${{ (contains(fromJSON('["push","schedule","workflow_dispatch","merge_group"]'), github.event_name) || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && fromJSON(vars.RUNS_ON || '{}').test || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
