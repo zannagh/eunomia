@@ -64,7 +64,16 @@ public abstract class ScreenMixin extends AbstractContainerEventHandler implemen
             at = @At("HEAD"),
             cancellable = true
     )
+    //? if >= 26.4-0.snapshot.10 {
+    /*// 26.4-snapshot.10 dropped mouseX/mouseY/partialTick from extractRenderState; they now live on
+    // the extractor itself.
+    private void eunomia$applyScreenTransformers(net.minecraft.client.gui.GuiGraphicsExtractor graphics, CallbackInfo ci) {
+        int mouseX = graphics.mouseX();
+        int mouseY = graphics.mouseY();
+        float partialTick = graphics.partialTicks();
+    *///?} else {
     private void eunomia$applyScreenTransformers(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+    //?}
         List<ScreenTransformer<? extends Screen>> transformers = ScreenTransformationManager.INSTANCE.getTransformers(this);
         if (transformers.isEmpty()) {
             return;

@@ -44,7 +44,16 @@ public class CompoundButtonWidget extends AbstractWidget {
     }
 
     @Override
-    //? if >= 26.1-1.pre.1 {
+    // 26.4-snapshot.10: the extractor carries mouse + partialTick, so the signature lost them.
+    //? if >= 26.4-0.snapshot.10 {
+    /*protected void extractWidgetRenderState(@NonNull GuiGraphicsExtractor guiGraphics) {
+        updateLayout();
+        for (AbstractWidget button : buttons) {
+            button.extractRenderState(guiGraphics);
+        }
+    }
+    *///?}
+    //? if >= 26.1-1.pre.1 && < 26.4-0.snapshot.10 {
     protected void extractWidgetRenderState(@NonNull GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float partialTick) {
         updateLayout();
         for (AbstractWidget button : buttons) {

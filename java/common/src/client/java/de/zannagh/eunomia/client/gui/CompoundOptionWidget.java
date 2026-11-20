@@ -116,7 +116,24 @@ public class CompoundOptionWidget extends AbstractWidget {
     }
 
     @Override
-    //? if >= 26.1-1.pre.1 {
+    // 26.4-snapshot.10: the extractor carries mouse + partialTick, so the signature lost them.
+    //? if >= 26.4-0.snapshot.10 {
+    /*protected void extractWidgetRenderState(@NonNull GuiGraphicsExtractor guiGraphics) {
+        updateLayout();
+        primary.extractRenderState(guiGraphics);
+        secondary.extractRenderState(guiGraphics);
+        if (tertiary != null) {
+            tertiary.extractRenderState(guiGraphics);
+        }
+        if (additional != null) {
+            additional.extractRenderState(guiGraphics);
+        }
+        if (quaternary != null) {
+            quaternary.extractRenderState(guiGraphics);
+        }
+    }
+    *///?}
+    //? if >= 26.1-1.pre.1 && < 26.4-0.snapshot.10 {
     protected void extractWidgetRenderState(@NonNull GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float partialTick) {
         updateLayout();
         primary.extractRenderState(guiGraphics, mouseX, mouseY, partialTick);
