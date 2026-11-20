@@ -10,5 +10,5 @@ pluginManagement {
 // Standalone build (NOT included in the main eunomia build): it exists solely to publish a maven
 // copy of the multiloader/stonecutter convention plugins that live in ../buildSrc, so a sibling mod
 // can consume them as a resolved plugin. Invoke it with the main wrapper via
-//   ./gradlew -p gradle-conventions publishToMavenLocal   (or :publish for GitHub Packages)
+//   ./gradlew -p gradle-conventions publishToMavenLocal   (or :publish for Reposilite, needs MAVEN_USERNAME/MAVEN_PASSWORD)
 rootProject.name = "eunomia-gradle-conventions"

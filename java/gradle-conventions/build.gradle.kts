@@ -99,18 +99,16 @@ publishing {
     repositories {
         mavenLocal()
 
-        val gprUser = providers.gradleProperty("gpr.user")
-            .orElse(providers.environmentVariable("GITHUB_ACTOR"))
-        val gprToken = providers.gradleProperty("gpr.token")
-            .orElse(providers.environmentVariable("GITHUB_TOKEN"))
+        val mavenUser = providers.environmentVariable("MAVEN_USERNAME")
+        val mavenPassword = providers.environmentVariable("MAVEN_PASSWORD")
 
-        if (gprUser.isPresent && gprToken.isPresent) {
+        if (mavenUser.isPresent && mavenPassword.isPresent) {
             maven {
-                name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/zannagh/eunomia")
+                name = "Reposilite"
+                url = uri("https://maven.zannagh.me/releases")
                 credentials {
-                    username = gprUser.get()
-                    password = gprToken.get()
+                    username = mavenUser.get()
+                    password = mavenPassword.get()
                 }
             }
         }
