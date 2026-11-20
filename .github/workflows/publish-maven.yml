@@ -1,7 +1,16 @@
-# Publishes eunomia's maven artifacts to GitHub Packages so a sibling mod can consume them:
+# Publishes eunomia's maven artifacts to the self-hosted Reposilite (https://maven.zannagh.me/releases,
+# anonymous read) so a sibling mod can consume them without any token:
 #   - de.zannagh.eunomia:eunomia-core   (the MC-free networking/framework library)
 #   - de.zannagh.eunomia:eunomia-paper  (the shaded Paper plugin)
 #   - de.zannagh.eunomia:eunomia-common (one jar per game version, as `<semVer>+<display_version>`)
+#
+# Backfill: run this workflow manually (workflow_dispatch) with `tag` set to an existing release tag,
+# e.g. v0.3.15. That tag is checked out and published under its own version. A tag cut before the
+# Reposilite move still carries the old GitHub Packages publish config, so the backfill overlays the
+# publish config from the commit the workflow runs from (see "Overlay publish config").
+#
+# Credentials: the MAVEN_USERNAME / MAVEN_PASSWORD repository secrets, read by the eunomia-publish
+# convention from the environment. Nothing needs `packages: write` any more.
 #
 # This workflow publishes the Maven artifacts only. Consumer-facing mod uploads to Modrinth and
 # CurseForge (Fabric/NeoForge) live in publish-platforms.yml, driven by a manual GitHub release.
@@ -26,6 +35,11 @@ name: Publish (Maven)
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (backfill), e.g. v0.3.15"
+        required: true
+        type: string
   release:
     types: [published]
 
@@ -43,10 +57,25 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Empty on a release event (checks out the release tag); the backfill tag on dispatch.
+          ref: ${{ inputs.tag }}
 
       - name: Calculate Version
-        id: version
+        id: calc
         uses: zannagh/versionizer/calculate-version@v1
+
+      # On a backfill the version is the tag itself, so it cannot drift from what was released.
+      - name: Resolve version
+        id: version
+        env:
+          TAG: ${{ inputs.tag }}
+          CALCULATED: ${{ steps.calc.outputs.fullSemVer }}
+        run: |
+          if [ -n "$TAG" ]; then
+            echo "fullSemVer=${TAG#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "fullSemVer=$CALCULATED" >> "$GITHUB_OUTPUT"
+          fi
 
   publish:
     name: Publish libraries (core, paper, conventions)
@@ -54,7 +83,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     defaults:
       run:
         shell: bash
@@ -64,28 +92,53 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Empty on a release event (checks out the release tag); the backfill tag on dispatch.
+          ref: ${{ inputs.tag }}
+
+      # Backfill only: the tag predates the Reposilite move, so lay the current publish convention over
+      # it. Harmless on a release event, where it is skipped.
+      - name: Checkout publish config
+        if: ${{ inputs.tag != '' }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-publish-config
+          sparse-checkout: |
+            java/buildSrc/src/main/kotlin/eunomia-publish.gradle.kts
+            java/gradle-conventions/src/main/kotlin/eunomia-publish.gradle.kts
+            java/gradle-conventions/build.gradle.kts
+
+      - name: Overlay publish config
+        if: ${{ inputs.tag != '' }}
+        working-directory: .
+        run: |
+          for f in java/buildSrc/src/main/kotlin/eunomia-publish.gradle.kts \
+                   java/gradle-conventions/src/main/kotlin/eunomia-publish.gradle.kts \
+                   java/gradle-conventions/build.gradle.kts; do
+            cp ".ci-publish-config/$f" "$f"
+          done
 
       - name: Setup Gradle Environment
         uses: zannagh/versionizer/setup-gradle-env@v1
         with:
           gradlew-path: "./java/gradlew"
 
-      # The eunomia-publish convention reads GITHUB_ACTOR/GITHUB_TOKEN for the GitHub Packages repo.
+      # The eunomia-publish convention reads MAVEN_USERNAME/MAVEN_PASSWORD for the Reposilite repo.
       # Explicit project paths: a bare `publish` would also publish whichever common variant happens
       # to be active, duplicating a coordinate the publish-common matrix owns.
       - name: Publish libraries
         run: ./gradlew :core:publish :paper:publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
 
       # Also publish the shared multiloader/stonecutter convention plugins (standalone build) so a
       # consumer can apply the same setup as a resolved plugin instead of copying buildSrc.
       - name: Publish convention plugins
         run: ./gradlew -p gradle-conventions publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}
 
   publish-common:
     name: Publish eunomia-common (${{ matrix.variant }})
@@ -93,7 +146,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     strategy:
       # One game version's failure must not hide the other ten.
       fail-fast: false
@@ -127,6 +179,31 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # Empty on a release event (checks out the release tag); the backfill tag on dispatch.
+          ref: ${{ inputs.tag }}
+
+      # Backfill only: the tag predates the Reposilite move, so lay the current publish convention over
+      # it. Harmless on a release event, where it is skipped.
+      - name: Checkout publish config
+        if: ${{ inputs.tag != '' }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-publish-config
+          sparse-checkout: |
+            java/buildSrc/src/main/kotlin/eunomia-publish.gradle.kts
+            java/gradle-conventions/src/main/kotlin/eunomia-publish.gradle.kts
+            java/gradle-conventions/build.gradle.kts
+
+      - name: Overlay publish config
+        if: ${{ inputs.tag != '' }}
+        working-directory: .
+        run: |
+          for f in java/buildSrc/src/main/kotlin/eunomia-publish.gradle.kts \
+                   java/gradle-conventions/src/main/kotlin/eunomia-publish.gradle.kts \
+                   java/gradle-conventions/build.gradle.kts; do
+            cp ".ci-publish-config/$f" "$f"
+          done
 
       - name: Setup Gradle Environment
         uses: zannagh/versionizer/setup-gradle-env@v1
@@ -141,5 +218,5 @@ jobs:
       - name: Publish eunomia-common
         run: ./gradlew :common:${{ matrix.variant }}:publish -PsemVer="${{ needs.version.outputs.fullSemVer }}"
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAVEN_USERNAME: ${{ secrets.MAVEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.MAVEN_PASSWORD }}

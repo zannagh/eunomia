@@ -27,10 +27,24 @@ dependencies {
 }
 ```
 
-The artifacts are hosted on **GitHub Packages** (`https://maven.pkg.github.com/zannagh/eunomia`),
-which requires authentication even for public packages: add the repo with a GitHub token that has
-`read:packages` (a classic PAT, or `GITHUB_TOKEN` in Actions). Building eunomia locally and running
-`./gradlew publish` puts the same artifacts in `mavenLocal()`, which needs no credentials.
+The artifacts are hosted on a self-hosted Maven repository, **anonymous read - no token needed**:
+
+```kotlin
+repositories {
+    maven("https://maven.zannagh.me/releases") {
+        content { includeGroup("de.zannagh.eunomia") }
+    }
+}
+```
+
+Coordinates are `de.zannagh.eunomia:eunomia-core:<ver>` and
+`de.zannagh.eunomia:eunomia-common:<ver>+<display_version>:dev` (plus `eunomia-paper` and
+`eunomia-gradle-conventions`). Building eunomia locally and running `./gradlew publish` also puts the
+same artifacts in `mavenLocal()`, which is handy for testing an unreleased change against a consumer.
+
+Publishing (maintainers): the `Publish (Maven)` workflow runs on every published GitHub release and
+reads the `MAVEN_USERNAME` / `MAVEN_PASSWORD` repository secrets. To backfill an existing release, run
+it manually (Actions > Publish (Maven) > Run workflow) with the `tag` input, e.g. `v0.3.15`.
 
 ### Loader support
 
@@ -43,7 +57,7 @@ which requires authentication even for public packages: add the repo with a GitH
 
 ```bash
 cd java
-./gradlew publish                              # -> mavenLocal (+ GitHub Packages when credentials are set)
+./gradlew publish                              # -> mavenLocal (+ maven.zannagh.me/releases when MAVEN_USERNAME/MAVEN_PASSWORD are set)
 ./gradlew -p gradle-conventions publish        # the shared multiloader/stonecutter convention plugins
 ```
 
