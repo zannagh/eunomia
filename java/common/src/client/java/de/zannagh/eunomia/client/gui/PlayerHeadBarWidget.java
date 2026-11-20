@@ -264,7 +264,13 @@ public class PlayerHeadBarWidget extends AbstractWidget {
         *///?}
     }
 
-    //? if >= 26.1-1.pre.1 {
+    //? if >= 26.4-0.snapshot.10 {
+    /*@Override
+    protected void extractWidgetRenderState(net.minecraft.client.gui.GuiGraphicsExtractor context) {
+        renderBar(context, context.mouseX(), context.mouseY());
+    }
+    *///?}
+    //? if >= 26.1-1.pre.1 && < 26.4-0.snapshot.10 {
     @Override
     protected void extractWidgetRenderState(net.minecraft.client.gui.GuiGraphicsExtractor context, int mouseX, int mouseY, float partialTick) {
         renderBar(context, mouseX, mouseY);

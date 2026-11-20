@@ -63,6 +63,11 @@ java.version = "25"
 display_version = "26.3"
 game_versions = "26.3"
 
+["26.4-snapshot-10"]
+java.version = "25"
+display_version = "26.4-snap.10"
+game_versions = "26.4-snapshot-10"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Per project - loader-specific properties.
 # Matched via the default project tag (e.g. "fabric-1.20.1").
@@ -145,7 +150,14 @@ fabricapi.semver = "0.153.0+26.2"
 loader_version = "0.19.3"
 fabricapi.semver = "0.159.4+26.3"
 
+["fabric-26.4-snapshot-10"]
+"fabric.minecraft_version" = "26.4-alpha.10"
+"fabric.minecraft_version_range" = ">=26.4-alpha.10 <=26.4-alpha.10"
+loader_version = "0.19.3"
+fabricapi.semver = "0.166.4+26.4"
+
 # ── NeoForge ──────────────────────────────────────────────────────────────────
+# No neoforge-26.4-snapshot-10 node: NeoForge has published no build for the 26.4 snapshots yet.
 
 ["neoforge-1.21.1"]
 "neoforge.version" = "21.1.244"

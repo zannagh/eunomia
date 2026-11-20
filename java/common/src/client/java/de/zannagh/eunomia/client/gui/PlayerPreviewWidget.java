@@ -31,7 +31,10 @@ public class PlayerPreviewWidget extends AbstractWidget {
     }
 
     @Override
-    //? if >= 26.1-1.pre.1
+    // 26.4-snapshot.10: the extractor carries the mouse position, so the signature lost it.
+    //? if >= 26.4-0.snapshot.10
+    //protected void extractWidgetRenderState(GuiGraphicsExtractor context) {
+    //? if >= 26.1-1.pre.1 && < 26.4-0.snapshot.10
     protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float a) {
     //? if < 26.1-1.pre.1
     //public void renderWidget(GuiGraphics context, int mouseX, int mouseY, float delta) {
@@ -62,6 +65,21 @@ public class PlayerPreviewWidget extends AbstractWidget {
 
         int entitySize = (int) Math.round(previewSize * 0.35);
 
+        //? if >= 26.4-0.snapshot.10 {
+        /*// The portrait helper moved from InventoryScreen to EntityPortraitWidget and now reads the
+        // mouse from the extractor.
+        net.minecraft.client.gui.screens.social.EntityPortraitWidget.extractEntityInInventoryFollowsMouse(
+                context,
+                panelLeft,
+                panelTop - margin,
+                panelRight,
+                panelBottom,
+                (float) entitySize,
+                0.25f,
+                player
+        );
+        *///?}
+        //? if < 26.4-0.snapshot.10 {
         //? if < 26.1-1.pre.1
         //InventoryScreen.renderEntityInInventoryFollowsMouse(
         //? if >= 26.1-1.pre.1
@@ -77,6 +95,7 @@ public class PlayerPreviewWidget extends AbstractWidget {
                 (float) mouseY,
                 player
         );
+        //?}
     }
 
     @Override
