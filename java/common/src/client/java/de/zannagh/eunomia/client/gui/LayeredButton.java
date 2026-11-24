@@ -32,6 +32,9 @@ public abstract class LayeredButton extends Button {
     @Nullable protected Identifier midLayerSprite(boolean enabled) { return null; }
 
     protected Identifier spriteBg() {
+        //? if >= 26.4-0.snapshot.10
+        //boolean highlighted = this.isHovered() || this.isFocused();
+        //? if < 26.4-0.snapshot.10
         boolean highlighted = this.isHoveredOrFocused();
         if (bgNormal != null && bgHighlighted != null) {
             return highlighted ? bgHighlighted : bgNormal;
@@ -88,7 +91,19 @@ public abstract class LayeredButton extends Button {
         return isEnabled;
     }
 
-    //? if >= 26.1-1.pre.1 {
+    // 26.4-snapshot.10 dropped the per-call mouse/partialTick arguments: the extractor carries them.
+    //? if >= 26.4-0.snapshot.10 {
+    /*@Override
+    protected void extractContents(net.minecraft.client.gui.GuiGraphicsExtractor guiGraphics) {
+        guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, spriteBg(), this.getX(), this.getY(), this.width, this.height);
+        if (midLayerSprite(isEnabled) instanceof Identifier sprite) {
+            guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, this.getX() + (this.width - 15) / 2, this.getY() + (this.height - 15) / 2, 15, 15);
+        }
+        renderForeground(guiGraphics, guiGraphics.mouseX(), guiGraphics.mouseY(), guiGraphics.partialTicks());
+    }
+    *///?}
+
+    //? if >= 26.1-1.pre.1 && < 26.4-0.snapshot.10 {
     @Override
     protected void extractContents(net.minecraft.client.gui.GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float partialTicks) {
         guiGraphics.blitSprite(RenderPipelines.GUI_TEXTURED, spriteBg(), this.getX(), this.getY(), this.width, this.height);

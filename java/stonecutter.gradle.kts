@@ -53,6 +53,10 @@ stonecutter parameters {
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("com.mojang.blaze3d.pipeline.DepthStencilState", "com.mojang.renderpearl.api.pipeline.DepthStencilState") }
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("com.mojang.blaze3d.pipeline.ColorTargetState", "com.mojang.renderpearl.api.pipeline.ColorTargetState") }
     replacements.string(current.parsed >= "26.3-0.snapshot.3") { replace("info.shade()", "info.shadeDirectionOverride()") }
+    // 26.4-snapshot-10 replaced the RenderPipelines.GUI_* constants with the GuiPipeline wrapper that
+    // GuiGraphicsExtractor.blit/blitSprite now take (GUI_TEXTURED -> GuiPipeline.TEXTURED).
+    replacements.string(current.parsed >= "26.4-0.snapshot.10") { replace("net.minecraft.client.renderer.RenderPipelines", "net.minecraft.client.gui.GuiPipeline") }
+    replacements.string(current.parsed >= "26.4-0.snapshot.10") { replace("RenderPipelines.GUI_TEXTURED", "GuiPipeline.TEXTURED") }
 
     // Toasts. 1.21.2 renamed ToastComponent to ToastManager and, with it, the Minecraft accessor
     // getToasts() -> getToastManager(). Source is written in the modern form and rewritten downwards.

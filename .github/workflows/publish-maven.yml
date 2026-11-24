@@ -167,6 +167,7 @@ jobs:
           - fabric-26.1.2
           - fabric-26.2
           - fabric-26.3
+          - fabric-26.4-snapshot-10
           # Classic Forge (LexForge), 1.20.1 only - NeoForge covers 1.20.2+. Publishes
           # eunomia-common:<semVer>+mc-1.20.1-forge.
           - forge-1.20.1

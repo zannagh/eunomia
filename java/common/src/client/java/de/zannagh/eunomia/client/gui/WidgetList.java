@@ -120,7 +120,15 @@ public class WidgetList extends ContainerObjectSelectionList<WidgetList.WidgetEn
             this.widget = widget;
         }
 
-        //? if >= 26.1-1.pre.1 {
+        //? if >= 26.4-0.snapshot.10 {
+        /*@Override
+        public void extractContent(GuiGraphicsExtractor context, boolean hovered) {
+            widget.setX(this.getContentX());
+            widget.setY(this.getContentY());
+            widget.setWidth(this.getContentWidth());
+            widget.extractRenderState(context);
+        }
+        *///?} else if >= 26.1-1.pre.1 {
         @Override
         public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float delta) {
             widget.setX(this.getContentX());
